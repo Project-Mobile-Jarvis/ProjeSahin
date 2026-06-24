@@ -12,9 +12,10 @@ Tam spec: SPEC.md (her zaman ona başvur).
       → Repo: github.com/Project-Mobile-Jarvis/ProjeSahin (main, auto-deploy)
 - [x] Faz 2 — /stt (Groq Whisper, whisper-large-v3-turbo, language=tr) — Railway'de CANLI (ses→metin→/chat e2e doğrulandı)
 - [x] Faz 3 — /tts (Google Chirp 3 HD, varsayılan ses tr-TR-Chirp3-HD-Achird) — Railway'de CANLI (metin→mp3 doğrulandı)
-- [~] Faz 4 — Agentic döngü + tool'lar: navigate_to, save/get_saved_location, save/get_preference
-      grounding (google_search). search_places (Places API). save/get + navigate ("eve götür") + grounding YEREL doğrulandı.
-      search_places: Places API anahtarı bekliyor. Railway'e GOOGLE_PLACES_API_KEY eklenecek.
+- [x] Faz 4 — Agentic döngü + tool'lar: search_places (Places API New), navigate_to,
+      save/get_saved_location, save/get_preference, grounding. YEREL tam doğrulandı
+      ("Bodrum restoran öner" gerçek mekanlar+puan; "eve götür"→navigate_to; hafıza).
+      Railway'e GOOGLE_PLACES_API_KEY eklenmeli (prod search_places için).
 - [ ] Faz 5–9 — Flutter app   [ ] Faz 10 — Proaktif (opsiyonel)
 
 ## Tech Stack
