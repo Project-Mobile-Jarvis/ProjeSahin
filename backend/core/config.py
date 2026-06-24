@@ -46,13 +46,15 @@ class Settings(BaseSettings):
     # stabil alias — hız/performans dengesi en iyi, sürüm çıktıkça otomatik güncellenir.
     GEMINI_MODEL: str = "gemini-flash-latest"
     # Birincil model geçici 503/429/504 verirse sırayla denenecek yedekler (virgülle).
-    GEMINI_FALLBACK_MODELS: str = "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-3-flash-preview"
+    # gemini-3-flash-preview başta: yoğunlukta diğerleri 503 verirken genelde o ayakta kalıyor.
+    GEMINI_FALLBACK_MODELS: str = "gemini-3-flash-preview,gemini-flash-latest,gemini-2.5-flash-lite"
     # Thinking: -1 = modelin varsayılanı (Gemini 3'te çok-adımlı/agentic tool kullanımı için
     # gereken thought_signature'ı üretir — yoksa round-trip'te 400). 0 = kapalı (hızlı ama
     # Gemini 3'te server-tool döngüsünü bozar). Pozitif sayı = sabit düşünme bütçesi.
     GEMINI_THINKING_BUDGET: int = -1
-    # Yerleşik google_search grounding (web araması). 429 kotada zarifçe grounding'siz devam eder.
-    GEMINI_GROUNDING: bool = True
+    # Yerleşik google_search grounding (web araması). Varsayılan KAPALI: dar ücretsiz kota
+    # (429) + gecikme ekliyor; komutlar zaten gerektirmiyor. Web sorguları için env ile aç.
+    GEMINI_GROUNDING: bool = False
 
     # --- Google Places (Faz 4) ---
     GOOGLE_PLACES_API_KEY: str = ""
