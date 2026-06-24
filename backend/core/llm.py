@@ -56,16 +56,14 @@ def _get_client() -> genai.Client:
     return _client
 
 
-def _config(use_grounding: bool) -> types.GenerateContentConfig:
+def _config(use_grounding: bool, thinking_budget: int) -> types.GenerateContentConfig:
     tools = list(TOOLS)
     if use_grounding:
         # google_search ile function_declarations AYRI Tool olmak zorunda.
         tools = tools + [types.Tool(google_search=types.GoogleSearch())]
-    # budget < 0 → thinking_config verme (modelin varsayılan düşünmesi; Gemini 3 tool için gerekli).
+    # budget < 0 → thinking_config verme (modelin varsayılanı). 0 → düşünme KAPALI (hızlı).
     thinking = (
-        types.ThinkingConfig(thinking_budget=settings.GEMINI_THINKING_BUDGET)
-        if settings.GEMINI_THINKING_BUDGET >= 0
-        else None
+        types.ThinkingConfig(thinking_budget=thinking_budget) if thinking_budget >= 0 else None
     )
     return types.GenerateContentConfig(
         system_instruction=SYSTEM_INSTRUCTION,
@@ -107,21 +105,28 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
     client = _get_client()
     contents = _to_contents(history, user_message)
     chain = settings.model_chain()
-    # Konuşma durumu: grounding açık/kapalı + sabitlenmiş model (thought_signature tutarlılığı).
-    state = {"grounding": settings.GEMINI_GROUNDING, "model": None}
+    escalated_budget = settings.GEMINI_THINKING_BUDGET
+    # HIZ: önce düşünme KAPALI (budget=0) → basit komutlar hızlı. Sunucu-tool round-trip'i
+    # gerekirse düşünmeyi aç (Gemini 3 thought_signature için). Model sabitlenir.
+    state = {
+        "grounding": settings.GEMINI_GROUNDING,
+        "model": None,
+        "budget": 0,
+        "escalated": False,
+    }
 
     def _call(model: str):
         """Tek model çağrısı; grounding 429'da grounding'i kapatıp aynı modelle tekrar dener."""
         try:
             return client.models.generate_content(
-                model=model, contents=contents, config=_config(state["grounding"])
+                model=model, contents=contents, config=_config(state["grounding"], state["budget"])
             )
         except genai_errors.APIError as exc:
             if getattr(exc, "code", None) == 429 and state["grounding"]:
                 logger.warning("Grounding 429 — grounding'siz devam ediliyor")
                 state["grounding"] = False
                 return client.models.generate_content(
-                    model=model, contents=contents, config=_config(False)
+                    model=model, contents=contents, config=_config(False, state["budget"])
                 )
             raise
 
@@ -169,7 +174,14 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
                 reply = model_text or _default_reply(action, args)
             return {"action": action, "args": args, "reply": reply}
 
-        # Hepsi sunucu tool'u: model turn'ünü (thought_signature dahil) aynen ekle, sonuçları geri besle.
+        # Hepsi sunucu tool'u → round-trip gerekiyor → thought_signature için düşünme açık olmalı.
+        # İlk kez bu noktaya geldiysek (düşünme kapalıydı) turu düşünme AÇIK yeniden üret.
+        if not state["escalated"] and escalated_budget != 0:
+            state["escalated"] = True
+            state["budget"] = escalated_budget
+            continue
+
+        # Model turn'ünü (thought_signature dahil) aynen ekle, sonuçları geri besle.
         contents.append(content)
         resp_parts = [
             types.Part.from_function_response(

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'config.dart';
+import 'services/actions.dart';
 import 'services/backend.dart';
+import 'services/location.dart';
 import 'services/player.dart';
 import 'services/recorder.dart';
 
@@ -45,6 +47,8 @@ class _HomePageState extends State<HomePage> {
   final Recorder _recorder = Recorder();
   final TtsPlayer _player = TtsPlayer();
   final BackendClient _backend = BackendClient();
+  final LocationService _location = LocationService();
+  final DeviceActions _actions = DeviceActions();
 
   AssistantState _state = AssistantState.idle;
   String _status = 'Hazır — konuşmak için bas';
@@ -56,6 +60,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     Permission.microphone.request();
+    _location.start(); // GPS izni + konum akışını ısıt
   }
 
   @override
@@ -110,19 +115,24 @@ class _HomePageState extends State<HomePage> {
       }
 
       _set(AssistantState.thinking, 'Düşünüyorum…');
-      final result = await _backend.chat(text);
+      final pos = _location.last;
+      final result =
+          await _backend.chat(text, lat: pos?.latitude, lng: pos?.longitude);
       setState(() {
         _reply = result.reply;
         _action = result.action;
       });
 
+      // Önce kısa sesli cevap, sonra cihaz aksiyonu (Maps/dialer uygulamayı öne alabilir).
       if (result.reply.trim().isNotEmpty) {
         _set(AssistantState.speaking, 'Cevaplıyorum…');
         final audio = await _backend.tts(result.reply);
         await _player.playBytes(audio);
       }
+      await _actions.dispatch(result.action, result.args);
       _set(AssistantState.idle, 'Hazır — konuşmak için bas');
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('JARVIS hata: $e\n$st');
       _set(AssistantState.error, 'Hata: ${_short(e)}');
     }
   }

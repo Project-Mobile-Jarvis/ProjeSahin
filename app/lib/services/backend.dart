@@ -26,12 +26,16 @@ class BackendClient {
     return (resp.data['text'] ?? '') as String;
   }
 
-  /// Metin → {action, args, reply} (Gemini agentic).
-  Future<ChatResult> chat(String message) async {
-    final resp = await _dio.post('/chat', data: {
+  /// Metin → {action, args, reply} (Gemini agentic). Konum varsa "en yakın"/save_location için gönderilir.
+  Future<ChatResult> chat(String message, {double? lat, double? lng}) async {
+    final body = <String, dynamic>{
       'session_id': Config.sessionId,
       'message': message,
-    });
+    };
+    if (lat != null && lng != null) {
+      body['location'] = {'lat': lat, 'lng': lng};
+    }
+    final resp = await _dio.post('/chat', data: body);
     final data = Map<String, dynamic>.from(resp.data as Map);
     return ChatResult(
       action: (data['action'] ?? 'chat_reply') as String,
