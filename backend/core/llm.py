@@ -183,7 +183,17 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
                 reply = model_text or _default_reply(action, args)
             return {"action": action, "args": args, "reply": reply}
 
-        # Hepsi sunucu tool'u → round-trip gerekiyor → thought_signature için düşünme açık olmalı.
+        # web_search TERMİNAL sunucu tool'u: sonucu (zaten Türkçe özet) DOĞRUDAN döndür.
+        # Round-trip + düşünme YAPMA — yoksa her web sorgusu 3-4 düşünmeli çağrı eder (pahalı).
+        # Burada model turn'ü geri gönderilmediği için thought_signature da gerekmez.
+        if fcalls and all(fc.name == "web_search" for fc in fcalls):
+            args = dict(fcalls[0].args) if fcalls[0].args else {}
+            result = execute_server_tool("web_search", args, ctx)
+            reply = (result.get("text") if isinstance(result, dict) else str(result)) or "Bir sonuç bulamadım."
+            reply = reply.strip()
+            return {"action": "chat_reply", "args": {"text": reply}, "reply": reply}
+
+        # Diğer sunucu tool'ları → round-trip gerekiyor → thought_signature için düşünme açık olmalı.
         # İlk kez bu noktaya geldiysek (düşünme kapalıydı) turu düşünme AÇIK yeniden üret.
         if not state["escalated"] and escalated_budget != 0:
             state["escalated"] = True

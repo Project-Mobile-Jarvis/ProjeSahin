@@ -18,8 +18,9 @@ logger = logging.getLogger("jarvis.websearch")
 _RETRYABLE = {429, 500, 503, 504}
 
 _SYSTEM = (
-    "Web'de bulduğun güncel ve doğru bilgiyi KISA, net Türkçe özetle. "
-    "Somut bilgileri (tarih, sayı, isim) net ver. Emin değilsen ya da bulamazsan 'bulamadım' de. "
+    "Sen Şahin'sin: Furkan'ın samimi Türkçe asistanı. Web'de bulduğun güncel bilgiyi "
+    "TEK-İKİ cümleyle, kısa ve samimi (kanka tarzı) söyle — cevap sesli okunacak. "
+    "Somut bilgiyi (tarih, sayı, isim) net ver. Bulamazsan kısaca 'bulamadım kanka' de. "
     "ASLA bilgi uydurma."
 )
 
@@ -48,6 +49,9 @@ def web_search(query: str) -> dict:
     config = types.GenerateContentConfig(
         system_instruction=_SYSTEM,
         tools=[types.Tool(google_search=types.GoogleSearch())],  # SADECE grounding, FC YOK
+        # Düşünme KAPALI: grounding'e gerek yok, en pahalı kalem (çıktı token'ı) düşer.
+        # Burada FC olmadığı için thought_signature derdi yok → 0 güvenli.
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
     contents = [types.Content(role="user", parts=[types.Part(text=query)])]
 
