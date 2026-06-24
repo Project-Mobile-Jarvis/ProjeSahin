@@ -18,10 +18,11 @@ from tools.definitions import TOOLS
 
 logger = logging.getLogger("jarvis.llm")
 
-# Gemini ara sıra geçici hata döndürür (503 model yoğunluğu, 429 hız limiti, 500).
-# Kısa exponential backoff ile birkaç kez tekrar dene — kullanıcı dalgalanmayı hissetmesin.
-_RETRYABLE_CODES = {429, 500, 503}
-_MAX_ATTEMPTS = 3
+# Gemini ara sıra geçici hata döndürür (503 yoğunluk, 429 limit, 500/504 timeout).
+# Her modeli bir kez dene; geçici hatada beklemeden YEDEK modele geç (config.model_chain) —
+# yoğunlukta aynı modeli retry'lamak yerine farklı modele geçmek daha hızlı/etkili.
+_RETRYABLE_CODES = {429, 500, 503, 504}
+_ATTEMPTS_PER_MODEL = 1
 
 SYSTEM_INSTRUCTION = (
     "Sen Şahin'sin: Furkan'ın Türkçe sesli kişisel asistanı. "
@@ -42,7 +43,15 @@ def _get_client() -> genai.Client:
     if _client is None:
         if not settings.GEMINI_API_KEY:
             raise RuntimeError("GEMINI_API_KEY ayarlı değil (.env veya Railway env).")
-        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        _client = genai.Client(
+            api_key=settings.GEMINI_API_KEY,
+            http_options=types.HttpOptions(
+                timeout=15000,  # ms — tek çağrı üst sınırı (yavaş modelde asılı kalma, yedeğe geç)
+                # SDK iç retry'ı KAPAT (attempts=1): yoğunlukta bizim retry'ımızla çarpışıp
+                # gecikmeyi katlıyordu. Dayanıklılık artık hızlı model-zincirinde (_generate).
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
+        )
     return _client
 
 
@@ -86,26 +95,33 @@ def _to_contents(history: list[dict[str, str]], user_message: str) -> list[types
 
 
 def _generate(client: genai.Client, contents: list[types.Content]):
-    """generate_content'i geçici hatalarda backoff ile tekrar dener."""
-    delay = 1.0
+    """Model zinciri + geçici hata retry'ı ile içerik üretir.
+
+    Her model için _ATTEMPTS_PER_MODEL deneme (kısa backoff). Model geçici hatayla
+    (503/429/500) tükenirse sonraki yedek modele geçer. Kalıcı hatada (400/403) hemen yükselir.
+    """
     last_exc: Exception | None = None
-    for attempt in range(1, _MAX_ATTEMPTS + 1):
-        try:
-            return client.models.generate_content(
-                model=settings.GEMINI_MODEL,
-                contents=contents,
-                config=_config(),
-            )
-        except genai_errors.APIError as exc:
-            last_exc = exc
-            if getattr(exc, "code", None) not in _RETRYABLE_CODES or attempt == _MAX_ATTEMPTS:
-                raise
-            logger.warning(
-                "Gemini geçici hata (code=%s), %.0fs sonra tekrar (%d/%d)",
-                getattr(exc, "code", "?"), delay, attempt, _MAX_ATTEMPTS,
-            )
-            time.sleep(delay)
-            delay *= 2
+    for model in settings.model_chain():
+        delay = 0.6
+        for attempt in range(1, _ATTEMPTS_PER_MODEL + 1):
+            try:
+                return client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=_config(),
+                )
+            except genai_errors.APIError as exc:
+                last_exc = exc
+                if getattr(exc, "code", None) not in _RETRYABLE_CODES:
+                    raise  # kalıcı hata — model değiştirmek çözmez
+                logger.warning(
+                    "Gemini %s geçici hata (code=%s) deneme %d/%d",
+                    model, getattr(exc, "code", "?"), attempt, _ATTEMPTS_PER_MODEL,
+                )
+                if attempt < _ATTEMPTS_PER_MODEL:
+                    time.sleep(delay)
+                    delay *= 2
+        logger.warning("Model %s tükendi, sonraki yedeğe geçiliyor", model)
     raise last_exc  # pragma: no cover (ulaşılmaz)
 
 

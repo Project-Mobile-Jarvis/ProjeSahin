@@ -30,7 +30,19 @@ class Settings(BaseSettings):
 
     # --- Gemini (Faz 1) ---
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    # Birincil model. "gemini-flash-latest" Google'ın güncel flash'ini takip eden stabil alias.
+    GEMINI_MODEL: str = "gemini-flash-latest"
+    # Birincil model geçici 503/429 verirse sırayla denenecek yedekler (virgülle).
+    GEMINI_FALLBACK_MODELS: str = "gemini-3-flash-preview,gemini-2.5-flash-lite,gemini-2.5-flash"
+
+    def model_chain(self) -> list[str]:
+        """Denenecek modeller: birincil + yedekler (tekrarsız, sıralı)."""
+        chain = [self.GEMINI_MODEL.strip()]
+        for m in self.GEMINI_FALLBACK_MODELS.split(","):
+            m = m.strip()
+            if m and m not in chain:
+                chain.append(m)
+        return chain
 
     @field_validator("DATABASE_URL")
     @classmethod
