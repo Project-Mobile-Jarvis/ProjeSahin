@@ -61,6 +61,19 @@ class DeviceActions {
     return null;
   }
 
+  // Akrabalık eş anlamlıları: kişi rehberde örn. "Annem" kayıtlıysa "valide" de eşleşsin.
+  static const Map<String, List<String>> _kinship = {
+    'anne': ['anne', 'annem', 'valide', 'anneciğim'],
+    'annem': ['anne', 'annem', 'valide', 'anneciğim'],
+    'valide': ['valide', 'anne', 'annem', 'anneciğim'],
+    'baba': ['baba', 'babam', 'peder'],
+    'babam': ['baba', 'babam', 'peder'],
+    'kardeş': ['kardeş', 'kardeşim'],
+    'abi': ['abi', 'abim', 'ağabey'],
+    'abla': ['abla', 'ablam'],
+    'eş': ['eş', 'eşim', 'karım', 'kocam', 'hayatım'],
+  };
+
   Future<String?> _resolveContact(String name) async {
     try {
       final status = await Permission.contacts.request();
@@ -68,11 +81,13 @@ class DeviceActions {
       final contacts = await FlutterContacts.getAll(
         properties: {ContactProperty.name, ContactProperty.phone},
       );
-      final n = name.toLowerCase();
+      final n = name.toLowerCase().trim();
+      final terms = <String>{n, ...?_kinship[n]};
       for (final c in contacts) {
+        if (c.phones.isEmpty) continue;
         final dn = (c.displayName ?? '').toLowerCase();
-        if (dn.contains(n) && c.phones.isNotEmpty) {
-          return c.phones.first.number;
+        for (final t in terms) {
+          if (dn.contains(t)) return c.phones.first.number;
         }
       }
     } catch (_) {}

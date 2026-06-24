@@ -129,7 +129,15 @@ class _HomePageState extends State<HomePage> {
         final audio = await _backend.tts(result.reply);
         await _player.playBytes(audio);
       }
-      await _actions.dispatch(result.action, result.args);
+      final note = await _actions.dispatch(result.action, result.args);
+      if (note != null && note.trim().isNotEmpty) {
+        // Aksiyon uygulanamadı (örn. kişi bulunamadı) → kullanıcıya sesli bildir.
+        setState(() => _reply = note);
+        try {
+          final audio = await _backend.tts(note);
+          await _player.playBytes(audio);
+        } catch (_) {}
+      }
       _set(AssistantState.idle, 'Hazır — konuşmak için bas');
     } catch (e, st) {
       debugPrint('JARVIS hata: $e\n$st');

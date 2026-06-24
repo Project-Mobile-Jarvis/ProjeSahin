@@ -8,6 +8,7 @@
 - Grounding (google_search) açık; 429 kotada grounding'siz zarifçe devam eder.
 """
 import logging
+import time
 from typing import Any
 
 from google import genai
@@ -131,21 +132,24 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
             raise
 
     def generate():
-        # Model sabitlendiyse sadece onu kullan; değilse zincirden ilk çalışanı seç ve sabitle.
-        models = [state["model"]] if state["model"] else chain
+        # Sabitli model varsa onu, yoksa zinciri dene. Tüm zincir geçici hata verirse
+        # kısa backoff'la 3 tura kadar tekrar dene (Gemini yoğunluk spike'ını aş).
+        delay = 1.0
         last_exc: Exception | None = None
-        for model in models:
-            try:
-                resp = _call(model)
-                state["model"] = model
-                return resp
-            except genai_errors.APIError as exc:
-                last_exc = exc
-                if getattr(exc, "code", None) not in _RETRYABLE_CODES:
-                    raise
-                logger.warning(
-                    "Model %s geçici hata (%s), sonrakine geçiliyor", model, getattr(exc, "code", "?")
-                )
+        for _round in range(3):
+            models = [state["model"]] if state["model"] else chain
+            for model in models:
+                try:
+                    resp = _call(model)
+                    state["model"] = model
+                    return resp
+                except genai_errors.APIError as exc:
+                    last_exc = exc
+                    if getattr(exc, "code", None) not in _RETRYABLE_CODES:
+                        raise
+                    logger.warning("Model %s geçici hata (%s)", model, getattr(exc, "code", "?"))
+            time.sleep(delay)
+            delay *= 1.8
         raise last_exc  # pragma: no cover
 
     for _ in range(_MAX_TOOL_ITERS):
