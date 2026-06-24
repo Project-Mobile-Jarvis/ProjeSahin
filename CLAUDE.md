@@ -11,7 +11,7 @@ Tam spec: SPEC.md (her zaman ona başvur).
       → **Railway'de CANLI:** https://projesahin-production.up.railway.app (root dir=backend, port 8080)
       → Repo: github.com/Project-Mobile-Jarvis/ProjeSahin (main, auto-deploy)
 - [x] Faz 2 — /stt (Groq Whisper, whisper-large-v3-turbo, language=tr) — Railway'de CANLI (ses→metin→/chat e2e doğrulandı)
-- [x] Faz 3 — /tts (Google Chirp 3 HD, varsayılan ses tr-TR-Chirp3-HD-Achird) — yerelde doğrulandı (metin→mp3)
+- [x] Faz 3 — /tts (Google Chirp 3 HD, varsayılan ses tr-TR-Chirp3-HD-Achird) — Railway'de CANLI (metin→mp3 doğrulandı)
 - [ ] Faz 4 — Places + grounding + kişisel hafıza tool'ları
 - [ ] Faz 5–9 — Flutter app   [ ] Faz 10 — Proaktif (opsiyonel)
 
