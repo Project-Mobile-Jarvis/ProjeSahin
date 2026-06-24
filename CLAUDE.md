@@ -44,7 +44,8 @@ Tam spec: SPEC.md (her zaman ona başvur).
 - Gemini araç tanımları: backend/tools/definitions.py
 - Gemini istemci + function_call ayrıştırma: backend/core/llm.py
 - Konuşma hafızası (DB): backend/core/memory.py
-- Web arama: AYRI dosya değil — Gemini google_search grounding chat.py'de (Faz 4)
+- Web arama: backend/tools/websearch.py — web_search SUNUCU tool'u, FC'siz ayrı google_search
+  grounding çağrısı (google_search + function_declarations aynı istekte 400 verdiği için ayrıldı)
 - DB: backend/db/ (database, models, migrations)
 - Config/güvenlik: backend/core/ (config, security)
 - Flutter servisleri: app/lib/services/ (Faz 5+)
