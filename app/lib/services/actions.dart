@@ -106,16 +106,17 @@ class DeviceActions {
         properties: {ContactProperty.name, ContactProperty.phone},
       );
       final stem = _stem(name);
-      debugPrint('JARVIS contacts: ${contacts.length} kişi, hedef="$name" kök="$stem"');
-      // 1) ÖNCE birebir hedef (ek-toleranslı kelime eşleşmesi) → "Valide" doğru seçilir.
-      final literal = _matchContacts(contacts, [stem], strict: false);
-      if (literal != null) return literal;
-      // 2) Akrabalık eş anlamlıları — TAM kelime eşleşmesi ("anne" ≠ "anneanne").
       final syns = _kinship[stem];
-      if (syns != null) {
-        final m = _matchContacts(contacts, syns, strict: true);
-        if (m != null) return m;
-      }
+      debugPrint('JARVIS contacts: ${contacts.length} kişi, hedef="$name" kök="$stem"');
+      // 1) ÖNCE TAM kelime eşleşmesi: stem + akrabalık eş anlamlıları birlikte.
+      //    Böylece "anne" → kayıtlı "Valide" ile eşleşir; "Anneanne"yi YANLIŞLIKLA seçmez
+      //    (eskiden ek-toleranslı eşleşme "anne"yi "anneanne"ye bağlıyordu — bug buydu).
+      final exactTerms = <String>{stem, if (syns != null) ...syns}.toList();
+      final exact = _matchContacts(contacts, exactTerms, strict: true);
+      if (exact != null) return exact;
+      // 2) Tam eşleşme yoksa ek-toleranslı (startsWith) — çekimli/kısmi adlar için ("Sevdem"e).
+      final loose = _matchContacts(contacts, [stem], strict: false);
+      if (loose != null) return loose;
       debugPrint('JARVIS contacts: eşleşme YOK');
     } catch (e) {
       debugPrint('JARVIS contacts hata: $e');
