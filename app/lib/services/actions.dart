@@ -1,4 +1,5 @@
 import 'package:android_intent_plus/android_intent.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -45,19 +46,19 @@ class DeviceActions {
 
   Future<String?> _call(Map<String, dynamic> args) async {
     final target = (args['target'] ?? '').toString().trim();
+    debugPrint('JARVIS make_call: target="$target"');
     if (target.isEmpty) return null;
-    final number = await _resolveContact(target);
-    if (number == null) {
-      // Rehberde bulunamadı; hedef zaten numara olabilir (rakam içeriyorsa) onu dene.
-      if (RegExp(r'\d{3,}').hasMatch(target)) {
-        await launchUrl(Uri(scheme: 'tel', path: target.replaceAll(' ', '')),
-            mode: LaunchMode.externalApplication);
-        return null;
-      }
-      return '$target rehberde bulunamadı';
+    var number = await _resolveContact(target);
+    number ??= RegExp(r'\d{3,}').hasMatch(target) ? target : null;
+    if (number == null) return '$target rehberde bulunamadı';
+    final clean = number.replaceAll(RegExp(r'[^\d+]'), '');
+    // Doğrudan ara (CALL_PHONE izniyle). İzin yoksa çeviriciyi aç (yedek).
+    final perm = await Permission.phone.request();
+    if (perm.isGranted) {
+      await AndroidIntent(action: 'android.intent.action.CALL', data: 'tel:$clean').launch();
+    } else {
+      await launchUrl(Uri(scheme: 'tel', path: clean), mode: LaunchMode.externalApplication);
     }
-    await launchUrl(Uri(scheme: 'tel', path: number.replaceAll(' ', '')),
-        mode: LaunchMode.externalApplication);
     return null;
   }
 
@@ -77,20 +78,55 @@ class DeviceActions {
   Future<String?> _resolveContact(String name) async {
     try {
       final status = await Permission.contacts.request();
-      if (!status.isGranted) return null;
+      if (!status.isGranted) {
+        debugPrint('JARVIS contacts: izin yok ($status)');
+        return null;
+      }
       final contacts = await FlutterContacts.getAll(
         properties: {ContactProperty.name, ContactProperty.phone},
       );
-      final n = name.toLowerCase().trim();
-      final terms = <String>{n, ...?_kinship[n]};
-      for (final c in contacts) {
-        if (c.phones.isEmpty) continue;
-        final dn = (c.displayName ?? '').toLowerCase();
-        for (final t in terms) {
-          if (dn.contains(t)) return c.phones.first.number;
+      final stem = _stem(name);
+      debugPrint('JARVIS contacts: ${contacts.length} kişi, hedef="$name" kök="$stem"');
+      // 1) ÖNCE birebir hedef (ek-toleranslı kelime eşleşmesi) → "Valide" doğru seçilir.
+      final literal = _matchContacts(contacts, [stem], strict: false);
+      if (literal != null) return literal;
+      // 2) Akrabalık eş anlamlıları — TAM kelime eşleşmesi ("anne" ≠ "anneanne").
+      final syns = _kinship[stem];
+      if (syns != null) {
+        final m = _matchContacts(contacts, syns, strict: true);
+        if (m != null) return m;
+      }
+      debugPrint('JARVIS contacts: eşleşme YOK');
+    } catch (e) {
+      debugPrint('JARVIS contacts hata: $e');
+    }
+    return null;
+  }
+
+  /// Türkçe -i halini kabaca at: valideyi→valide, annemi→annem, babamı→babam.
+  String _stem(String s) {
+    s = s.toLowerCase().trim();
+    for (final suf in ['yi', 'yı', 'yu', 'yü', 'i', 'ı', 'u', 'ü']) {
+      if (s.length > 3 && s.endsWith(suf)) return s.substring(0, s.length - suf.length);
+    }
+    return s;
+  }
+
+  /// Kişi adının KELİMELERİNDE terim eşleşmesi. strict=false → ek toleransı (startsWith).
+  String? _matchContacts(List<Contact> contacts, List<String> terms, {required bool strict}) {
+    for (final c in contacts) {
+      if (c.phones.isEmpty) continue;
+      final words = (c.displayName ?? '').toLowerCase().split(RegExp(r'\s+'));
+      for (final t in terms) {
+        if (t.length < 3) continue;
+        for (final w in words) {
+          if (w == t || (!strict && w.length >= 3 && (w.startsWith(t) || t.startsWith(w)))) {
+            debugPrint('JARVIS contacts: eşleşti "${c.displayName}" (terim=$t)');
+            return c.phones.first.number;
+          }
         }
       }
-    } catch (_) {}
+    }
     return null;
   }
 
