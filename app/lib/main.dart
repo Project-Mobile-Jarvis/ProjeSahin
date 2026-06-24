@@ -93,7 +93,7 @@ class _HomePageState extends State<HomePage> {
     try {
       _set(_state, 'Şahin hazırlanıyor…');
       await _wake.init();
-      _wake.onWake(_onWake);
+      _wake.listen(onCommand: _onWakeCommand, onWake: _onWakeListening);
       await _wake.start();
       _set(AssistantState.idle, 'Hazır — "Şahin" de ya da bas 🎤');
     } catch (e) {
@@ -102,15 +102,18 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// Vosk "şahin" duyunca tetiklenir; sonrasındaki komutu işler.
-  Future<void> _onWake(String command) async {
-    if (_busy || _state == AssistantState.recording) return; // meşgulse yok say
-    await _wake.stop(); // kendi sesini duymasın + mic serbest
-    if (command.trim().isEmpty) {
-      _set(AssistantState.idle, 'Şahin dinliyor — komutunu söyle');
-    } else {
-      await _handleText(command);
-    }
+  /// Sadece "şahin" duyuldu → komut bekleniyor. Vosk dinlemeye DEVAM eder (durdurma yok);
+  /// sıradaki cümle (sustuğunda otomatik biter) komut olarak gelecek.
+  void _onWakeListening() {
+    if (_busy || _state == AssistantState.recording) return;
+    _set(AssistantState.idle, 'Şahin dinliyor — komutunu söyle 🎤');
+  }
+
+  /// Komut hazır (tek nefes "şahin X" ya da "şahin" sonrası ayrı cümle) → işle.
+  Future<void> _onWakeCommand(String command) async {
+    if (_busy || _state == AssistantState.recording) return;
+    await _wake.stop(); // işleme + TTS sırasında kapat (self-trigger yok)
+    await _handleText(command);
     await _wake.start();
   }
 

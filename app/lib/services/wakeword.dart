@@ -1,25 +1,31 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:vosk_flutter_2/vosk_flutter_2.dart';
 
 /// "Şahin" wake word — Vosk ile sürekli, cihazda, kayıtsız dinleme (SPEC Faz 9).
 ///
-/// Vosk Türkçe modelini yükler, mikrofonu sürekli dinler. Bir cümlede "şahin"
-/// geçtiğinde, sonrasındaki metni komut olarak callback'e verir ("Şahin annemi ara").
+/// İki akış da desteklenir (Vosk sessizlikte cümleyi otomatik bitirir → tıklama yok):
+///  - Tek nefes: "Şahin annemi ara" → komut = "annemi ara".
+///  - İki aşama: "Şahin" → (komut beklenir) → "annemi ara" → komut = "annemi ara".
 class WakeWordService {
   static const _modelAsset = 'assets/models/vosk-model-small-tr-0.3.zip';
-  // "şahin" ve Vosk'un üretebileceği yakın yazımlar.
   static const _wakeWords = ['şahin', 'sahin', 'şahım', 'şahini', 'şahi'];
+  static final _wakeStrip = RegExp(r'^(şahin|sahin|şahım|şahini|şahi)\W*');
 
   final VoskFlutterPlugin _vosk = VoskFlutterPlugin.instance();
   SpeechService? _speech;
   bool _ready = false;
   bool _running = false;
 
+  bool _awaiting = false; // "şahin" duyuldu, komut bekleniyor
+  Timer? _awaitTimer;
+  void Function(String command)? _onCommand;
+  void Function()? _onWake;
+
   bool get ready => _ready;
   bool get running => _running;
 
-  /// Modeli yükler ve servisi hazırlar (ilk açılışta ~birkaç saniye, 36MB zip açılır).
   Future<void> init() async {
     if (_ready) return;
     final modelPath = await ModelLoader().loadFromAssets(_modelAsset);
@@ -29,24 +35,42 @@ class WakeWordService {
     _ready = true;
   }
 
-  /// Her tam (final) sonuçta 'şahin' aranır; bulunursa sonrasındaki komut cb'ye verilir.
-  void onWake(void Function(String command) cb) {
-    _speech?.onResult().listen((json) {
-      String text;
-      try {
-        text = (jsonDecode(json)['text'] ?? '').toString();
-      } catch (_) {
-        return;
-      }
-      text = text.toLowerCase().trim();
-      if (text.isEmpty) return;
-      final idx = _wakeIndex(text);
-      if (idx < 0) return;
-      // 'şahin' (ve eklerini) at, kalanı komut olarak ver.
-      var cmd = text.substring(idx);
-      cmd = cmd.replaceFirst(RegExp(r'^(şahin|sahin|şahım|şahini|şahi)\W*'), '').trim();
-      cb(cmd);
-    });
+  /// [onCommand]: komut hazır olunca. [onWake]: sadece "şahin" duyulunca (komut bekleniyor).
+  void listen({required void Function(String) onCommand, void Function()? onWake}) {
+    _onCommand = onCommand;
+    _onWake = onWake;
+    _speech?.onResult().listen(_handleResult);
+  }
+
+  void _handleResult(String json) {
+    String text;
+    try {
+      text = (jsonDecode(json)['text'] ?? '').toString().toLowerCase().trim();
+    } catch (_) {
+      return;
+    }
+    if (text.isEmpty) return;
+
+    // "Şahin" sonrası komut bekliyorduk → bu cümle komuttur.
+    if (_awaiting) {
+      _awaiting = false;
+      _awaitTimer?.cancel();
+      final cmd = text.replaceFirst(_wakeStrip, '').trim();
+      if (cmd.isNotEmpty) _onCommand?.call(cmd);
+      return;
+    }
+
+    final idx = _wakeIndex(text);
+    if (idx < 0) return; // bu cümlede "şahin" yok → yok say
+    final after = text.substring(idx).replaceFirst(_wakeStrip, '').trim();
+    if (after.isNotEmpty) {
+      _onCommand?.call(after); // tek nefes: "şahin annemi ara"
+    } else {
+      _awaiting = true; // sadece "şahin" → sıradaki cümleyi komut bekle
+      _onWake?.call();
+      _awaitTimer?.cancel();
+      _awaitTimer = Timer(const Duration(seconds: 8), () => _awaiting = false);
+    }
   }
 
   int _wakeIndex(String text) {
