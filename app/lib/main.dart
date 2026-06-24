@@ -138,6 +138,8 @@ class _HomePageState extends State<HomePage> {
   /// sıradaki cümle (sustuğunda otomatik biter) komut olarak gelecek.
   void _onWakeListening() {
     if (_busy || _state == AssistantState.recording) return;
+    // "Şahin" duyulur duyulmaz sohbet ekranını öne getir → kullanıcı dinlendiğini görür.
+    ForegroundWakeService.bringToFrontIfBackground();
     _set(AssistantState.idle, 'Şahin dinliyor — komutunu söyle 🎤');
   }
 
