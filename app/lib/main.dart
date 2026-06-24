@@ -7,6 +7,7 @@ import 'services/backend.dart';
 import 'services/location.dart';
 import 'services/player.dart';
 import 'services/recorder.dart';
+import 'services/wakeword.dart';
 
 void main() {
   runApp(const SahinApp());
@@ -49,6 +50,7 @@ class _HomePageState extends State<HomePage> {
   final BackendClient _backend = BackendClient();
   final LocationService _location = LocationService();
   final DeviceActions _actions = DeviceActions();
+  final WakeWordService _wake = WakeWordService();
 
   AssistantState _state = AssistantState.idle;
   String _status = 'Hazır — konuşmak için bas';
@@ -59,8 +61,13 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    Permission.microphone.request();
     _location.start(); // GPS izni + konum akışını ısıt
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    await Permission.microphone.request();
+    await _initWake();
   }
 
   @override
@@ -82,11 +89,38 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _initWake() async {
+    try {
+      _set(_state, 'Şahin hazırlanıyor…');
+      await _wake.init();
+      _wake.onWake(_onWake);
+      await _wake.start();
+      _set(AssistantState.idle, 'Hazır — "Şahin" de ya da bas 🎤');
+    } catch (e) {
+      debugPrint('JARVIS wake init hata: $e');
+      _set(AssistantState.idle, 'Hazır — konuşmak için bas');
+    }
+  }
+
+  /// Vosk "şahin" duyunca tetiklenir; sonrasındaki komutu işler.
+  Future<void> _onWake(String command) async {
+    if (_busy || _state == AssistantState.recording) return; // meşgulse yok say
+    await _wake.stop(); // kendi sesini duymasın + mic serbest
+    if (command.trim().isEmpty) {
+      _set(AssistantState.idle, 'Şahin dinliyor — komutunu söyle');
+    } else {
+      await _handleText(command);
+    }
+    await _wake.start();
+  }
+
   Future<void> _startRecording() async {
+    await _wake.stop(); // buton kaydı sırasında Vosk mic'i bıraksın
     if (!await _recorder.hasPermission()) {
       await Permission.microphone.request();
       if (!await _recorder.hasPermission()) {
         _set(AssistantState.error, 'Mikrofon izni gerekli');
+        await _wake.start();
         return;
       }
     }
@@ -103,17 +137,33 @@ class _HomePageState extends State<HomePage> {
     final path = await _recorder.stop();
     if (path == null) {
       _set(AssistantState.error, 'Kayıt alınamadı');
+      await _wake.start();
       return;
     }
     try {
       _set(AssistantState.thinking, 'Yazıya çeviriyorum…');
       final text = await _backend.stt(path);
-      setState(() => _transcript = text);
       if (text.trim().isEmpty) {
         _set(AssistantState.idle, 'Bir şey duyamadım, tekrar dene');
         return;
       }
+      await _handleText(text);
+    } catch (e, st) {
+      debugPrint('JARVIS hata: $e\n$st');
+      _set(AssistantState.error, 'Hata: ${_short(e)}');
+    } finally {
+      await _wake.start(); // buton akışı bitince wake'i geri aç
+    }
+  }
 
+  /// Metni (buton STT'sinden veya wake word'den) işler: /chat → sesli cevap → cihaz aksiyonu.
+  Future<void> _handleText(String text) async {
+    setState(() {
+      _transcript = text;
+      _reply = '';
+      _action = '';
+    });
+    try {
       _set(AssistantState.thinking, 'Düşünüyorum…');
       final pos = _location.last;
       final result =
@@ -131,14 +181,13 @@ class _HomePageState extends State<HomePage> {
       }
       final note = await _actions.dispatch(result.action, result.args);
       if (note != null && note.trim().isNotEmpty) {
-        // Aksiyon uygulanamadı (örn. kişi bulunamadı) → kullanıcıya sesli bildir.
         setState(() => _reply = note);
         try {
           final audio = await _backend.tts(note);
           await _player.playBytes(audio);
         } catch (_) {}
       }
-      _set(AssistantState.idle, 'Hazır — konuşmak için bas');
+      _set(AssistantState.idle, 'Hazır — "Şahin" de ya da bas 🎤');
     } catch (e, st) {
       debugPrint('JARVIS hata: $e\n$st');
       _set(AssistantState.error, 'Hata: ${_short(e)}');

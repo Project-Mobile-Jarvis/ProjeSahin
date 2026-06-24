@@ -24,7 +24,7 @@ android {
         applicationId = "com.projemobilejarvis.sahin"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 24  // record + porcupine için (Flutter varsayılanı yerine sabit)
+        minSdk = 30  // vosk_flutter_2 minSdk 30 ister (record/geolocator de uyumlu)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

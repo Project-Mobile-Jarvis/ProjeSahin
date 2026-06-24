@@ -38,13 +38,13 @@ dependencies:
   dio: ^5.9.2
   audioplayers: ^6.7.1
   connectivity_plus: ^7.1.1
-  permission_handler: ^12.0.3
+  permission_handler: 11.3.0
   path_provider: ^2.1.5
-  porcupine_flutter: ^4.0.0
   geolocator: ^14.0.2
   url_launcher: ^6.3.2
   android_intent_plus: ^6.0.0
   flutter_contacts: ^2.1.0
+  vosk_flutter_2: ^1.0.5
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +67,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/models/vosk-model-small-tr-0.3.zip
 
   # To add assets to your application, add an assets section, like this:
   # assets:
