@@ -52,9 +52,10 @@ class Settings(BaseSettings):
     # gereken thought_signature'ı üretir — yoksa round-trip'te 400). 0 = kapalı (hızlı ama
     # Gemini 3'te server-tool döngüsünü bozar). Pozitif sayı = sabit düşünme bütçesi.
     GEMINI_THINKING_BUDGET: int = -1
-    # Yerleşik google_search grounding (web araması). Varsayılan KAPALI: dar ücretsiz kota
-    # (429) + gecikme ekliyor; komutlar zaten gerektirmiyor. Web sorguları için env ile aç.
-    GEMINI_GROUNDING: bool = False
+    # Yerleşik google_search grounding (web araması). Varsayılan AÇIK (paid tier'da kota geniş):
+    # "akademik takvim", "bugün hava", güncel bilgi sorularında Gemini web'i arar. AUTO modda —
+    # basit komutlar (alarm/arama) aramayı tetiklemez, gecikme eklemez. 429'da grounding'siz devam.
+    GEMINI_GROUNDING: bool = True
 
     # --- Google Places (Faz 4) ---
     GOOGLE_PLACES_API_KEY: str = ""
