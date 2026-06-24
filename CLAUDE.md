@@ -6,8 +6,10 @@ Hibrit: internet varken Gemini bulut zekâsı, yokken cihazda temel komutlar.
 Tam spec: SPEC.md (her zaman ona başvur).
 
 ## Durum (fazlar)
-- [x] Faz 0 — Altyapı + güvenlik iskeleti (repo, /health, Docker Postgres)
+- [x] Faz 0 — Altyapı + güvenlik iskeleti (repo, /health, yerel Postgres)
 - [x] Faz 1 — Backend beyin: /chat + Gemini function calling + DB hafıza
+      → **Railway'de CANLI:** https://projesahin-production.up.railway.app (root dir=backend, port 8080)
+      → Repo: github.com/Project-Mobile-Jarvis/ProjeSahin (main, auto-deploy)
 - [ ] Faz 2 — /stt (Groq Whisper)   [ ] Faz 3 — /tts (Google Chirp 3 HD)
 - [ ] Faz 4 — Places + grounding + kişisel hafıza tool'ları
 - [ ] Faz 5–9 — Flutter app   [ ] Faz 10 — Proaktif (opsiyonel)
@@ -15,6 +17,7 @@ Tam spec: SPEC.md (her zaman ona başvur).
 ## Tech Stack
 - Backend: FastAPI + Uvicorn, Python 3.13. Deploy: Railway. DB: Railway PostgreSQL (SQLAlchemy 2.0 + Alembic).
 - LLM: Google Gemini, `google-genai` SDK (function calling + yerleşik google_search grounding).
+  Model: `gemini-flash-latest` (birincil, en iyi hız/performans) + GEMINI_FALLBACK_MODELS zinciri; 503/504 yoğunlukta yedeğe geçer. SDK iç retry kapalı, 15s timeout, thinking kapalı (GEMINI_THINKING_BUDGET=0, hız için; Faz 4'te artırılabilir).
 - STT online: Groq Whisper (whisper-large-v3-turbo). Offline: Vosk (tr-0.3).
 - TTS online: Google Cloud TTS (tr-TR-Chirp3-HD-*). Offline: Piper (sherpa-onnx).
 - App: Flutter/Dart. Native köprü: Kotlin (sadece AccessibilityService).

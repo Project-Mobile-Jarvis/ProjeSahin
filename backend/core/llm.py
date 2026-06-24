@@ -64,6 +64,8 @@ def _config() -> types.GenerateContentConfig:
         tool_config=types.ToolConfig(
             function_calling_config=types.FunctionCallingConfig(mode="AUTO")
         ),
+        # Hız: "thinking"i kapat (budget=0). Sesli asistanda kısa komutlar için gereksiz gecikme.
+        thinking_config=types.ThinkingConfig(thinking_budget=settings.GEMINI_THINKING_BUDGET),
     )
 
 

@@ -30,10 +30,14 @@ class Settings(BaseSettings):
 
     # --- Gemini (Faz 1) ---
     GEMINI_API_KEY: str = ""
-    # Birincil model. "gemini-flash-latest" Google'ın güncel flash'ini takip eden stabil alias.
+    # Birincil model. "gemini-flash-latest" Google'ın güncel en iyi flash'ini takip eden
+    # stabil alias — hız/performans dengesi en iyi, sürüm çıktıkça otomatik güncellenir.
     GEMINI_MODEL: str = "gemini-flash-latest"
-    # Birincil model geçici 503/429 verirse sırayla denenecek yedekler (virgülle).
-    GEMINI_FALLBACK_MODELS: str = "gemini-3-flash-preview,gemini-2.5-flash-lite,gemini-2.5-flash"
+    # Birincil model geçici 503/429/504 verirse sırayla denenecek yedekler (virgülle).
+    GEMINI_FALLBACK_MODELS: str = "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-3-flash-preview"
+    # "Thinking" gecikme ekler; sesli asistanda kısa komut/sohbet için 0 = kapalı (hızlı).
+    # Faz 4'te karmaşık çok-adımlı akıl yürütme için yükseltilebilir (env ile).
+    GEMINI_THINKING_BUDGET: int = 0
 
     def model_chain(self) -> list[str]:
         """Denenecek modeller: birincil + yedekler (tekrarsız, sıralı)."""
