@@ -78,12 +78,21 @@ class WhatsAppAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** Mesaj kutusu veya sohbet başlığı varsa bir sohbet ekranındayız. */
+    /** Mesaj kutusu/başlık (viewId) ya da herhangi bir editable alan varsa sohbet ekranındayız. */
     private fun isOnChatScreen(): Boolean {
         val root = rootInActiveWindow ?: return false
-        val hasEntry = root.findAccessibilityNodeInfosByViewId("$WA:id/entry").isNotEmpty()
-        val hasTitle = root.findAccessibilityNodeInfosByViewId("$WA:id/conversation_contact_name").isNotEmpty()
-        return hasEntry || hasTitle
+        if (root.findAccessibilityNodeInfosByViewId("$WA:id/entry").isNotEmpty()) return true
+        if (root.findAccessibilityNodeInfosByViewId("$WA:id/conversation_contact_name").isNotEmpty()) return true
+        return hasEditable(root) // viewId değişse de mesaj kutusu (editable) varsa sohbetteyiz
+    }
+
+    private fun hasEditable(node: AccessibilityNodeInfo?): Boolean {
+        node ?: return false
+        if (node.isEditable) return true
+        for (i in 0 until node.childCount) {
+            if (hasEditable(node.getChild(i))) return true
+        }
+        return false
     }
 
     private fun tryClickSendWithRetry() {
