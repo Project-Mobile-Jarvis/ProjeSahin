@@ -11,7 +11,7 @@ Tam spec: SPEC.md (her zaman ona başvur).
       → **Railway'de CANLI:** https://projesahin-production.up.railway.app (root dir=backend, port 8080)
       → Repo: github.com/Project-Mobile-Jarvis/ProjeSahin (main, auto-deploy)
 - [x] Faz 2 — /stt (Groq Whisper, whisper-large-v3-turbo, language=tr) — Railway'de CANLI (ses→metin→/chat e2e doğrulandı)
-- [ ] Faz 3 — /tts (Google Chirp 3 HD)
+- [x] Faz 3 — /tts (Google Chirp 3 HD, varsayılan ses tr-TR-Chirp3-HD-Achird) — yerelde doğrulandı (metin→mp3)
 - [ ] Faz 4 — Places + grounding + kişisel hafıza tool'ları
 - [ ] Faz 5–9 — Flutter app   [ ] Faz 10 — Proaktif (opsiyonel)
 
@@ -35,6 +35,7 @@ Tam spec: SPEC.md (her zaman ona başvur).
 ## Mimari (dosyalar)
 - Backend endpoint'leri: backend/routers/ (chat, stt; sonra tts)
 - STT (Groq Whisper): backend/core/stt.py + routers/stt.py
+- TTS (Google Chirp 3 HD): backend/core/tts.py + routers/tts.py; kimlik: backend/core/credentials.py
 - Gemini araç tanımları: backend/tools/definitions.py
 - Gemini istemci + function_call ayrıştırma: backend/core/llm.py
 - Konuşma hafızası (DB): backend/core/memory.py

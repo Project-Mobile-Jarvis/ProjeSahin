@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_STT_MODEL: str = "whisper-large-v3-turbo"
 
+    # --- Google Cloud TTS (Faz 3) ---
+    # Servis hesabı: ya GOOGLE_APPLICATION_CREDENTIALS (dosya yolu, yerel),
+    # ya da GOOGLE_APPLICATION_CREDENTIALS_JSON (tüm JSON içeriği, Railway → temp dosyaya yazılır).
+    GOOGLE_APPLICATION_CREDENTIALS: str = ""
+    GOOGLE_APPLICATION_CREDENTIALS_JSON: str = ""
+    GOOGLE_TTS_VOICE: str = "tr-TR-Chirp3-HD-Achird"
+    GOOGLE_TTS_LANGUAGE: str = "tr-TR"
+
     # --- Gemini (Faz 1) ---
     GEMINI_API_KEY: str = ""
     # Birincil model. "gemini-flash-latest" Google'ın güncel en iyi flash'ini takip eden
