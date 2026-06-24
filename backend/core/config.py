@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # --- Backend güvenliği (SPEC 7.3) ---
     API_SHARED_SECRET: str = _DEFAULT_SECRET
 
+    # --- Groq STT (Faz 2) ---
+    GROQ_API_KEY: str = ""
+    GROQ_STT_MODEL: str = "whisper-large-v3-turbo"
+
     # --- Gemini (Faz 1) ---
     GEMINI_API_KEY: str = ""
     # Birincil model. "gemini-flash-latest" Google'ın güncel en iyi flash'ini takip eden

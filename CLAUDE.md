@@ -10,7 +10,8 @@ Tam spec: SPEC.md (her zaman ona başvur).
 - [x] Faz 1 — Backend beyin: /chat + Gemini function calling + DB hafıza
       → **Railway'de CANLI:** https://projesahin-production.up.railway.app (root dir=backend, port 8080)
       → Repo: github.com/Project-Mobile-Jarvis/ProjeSahin (main, auto-deploy)
-- [ ] Faz 2 — /stt (Groq Whisper)   [ ] Faz 3 — /tts (Google Chirp 3 HD)
+- [x] Faz 2 — /stt (Groq Whisper, whisper-large-v3-turbo, language=tr) — yerelde doğrulandı (Türkçe ses→metin)
+- [ ] Faz 3 — /tts (Google Chirp 3 HD)
 - [ ] Faz 4 — Places + grounding + kişisel hafıza tool'ları
 - [ ] Faz 5–9 — Flutter app   [ ] Faz 10 — Proaktif (opsiyonel)
 
@@ -32,7 +33,8 @@ Tam spec: SPEC.md (her zaman ona başvur).
 - Flutter build: `cd app && flutter build apk` (Faz 5+)
 
 ## Mimari (dosyalar)
-- Backend endpoint'leri: backend/routers/ (chat; sonra stt, tts)
+- Backend endpoint'leri: backend/routers/ (chat, stt; sonra tts)
+- STT (Groq Whisper): backend/core/stt.py + routers/stt.py
 - Gemini araç tanımları: backend/tools/definitions.py
 - Gemini istemci + function_call ayrıştırma: backend/core/llm.py
 - Konuşma hafızası (DB): backend/core/memory.py
