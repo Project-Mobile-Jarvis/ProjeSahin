@@ -35,6 +35,8 @@ SYSTEM_INSTRUCTION = (
     "genel/güncel bilgi için web aramanı kullan.\n"
     "- Kişisel hafıza: save_location/get_saved_location (ev/iş), save_preference/get_preference.\n"
     "'Eve/işe götür' denince ÖNCE get_saved_location ile konumu çek, SONRA navigate_to'yu o lat/lng ile çağır. "
+    "'En yakın X'e git/götür' gibi navigasyonda ÖNCE search_places ile yeri bul (en iyi sonucun lat/lng'sini al), "
+    "SONRA navigate_to'yu o lat/lng ile çağır. navigate_to'ya 'en yakın benzinci' gibi BELİRSİZ metin verme — gerçek koordinat ver. "
     "Mekan sonuçlarını kısaca özetle (en iyi 1-3'ü, puanıyla). "
     "Aksiyon gerekmiyorsa chat_reply ile cevap ver. Asla bilgi uydurma."
 )
