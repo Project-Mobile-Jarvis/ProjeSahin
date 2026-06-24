@@ -42,6 +42,21 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Faz 7: WhatsApp otomatik gönder. Kullanıcı bir kez Ayarlar > Erişilebilirlik'ten açar.
+             Sadece sesli onaydan sonra, sadece WhatsApp'ta gönder düğmesine basar. -->
+        <service
+            android:name=".WhatsAppAccessibilityService"
+            android:exported="true"
+            android:label="Şahin WhatsApp"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -73,5 +88,7 @@
         <intent>
             <action android:name="android.intent.action.SET_ALARM"/>
         </intent>
+        <!-- Faz 7: WhatsApp paket görünürlüğü (Android 11+) — wa.me intent setPackage için -->
+        <package android:name="com.whatsapp"/>
     </queries>
 </manifest>

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">Şahin, senin sesli onayından sonra WhatsApp mesajını gönderir (yalnızca gönder düğmesine basar). Onay olmadan hiçbir şeye dokunmaz.</string>
+</resources>

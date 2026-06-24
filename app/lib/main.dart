@@ -8,6 +8,7 @@ import 'services/location.dart';
 import 'services/player.dart';
 import 'services/recorder.dart';
 import 'services/wakeword.dart';
+import 'services/whatsapp.dart';
 
 void main() {
   runApp(const SahinApp());
@@ -46,6 +47,15 @@ class _ChatMsg {
   _ChatMsg(this.who, this.text, this.user, this.error);
 }
 
+/// Sesli onay bekleyen WhatsApp mesajı.
+class _PendingWa {
+  final String phone;
+  final String message;
+  final String label;
+  final DateTime at;
+  _PendingWa(this.phone, this.message, this.label) : at = DateTime.now();
+}
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -60,11 +70,13 @@ class _HomePageState extends State<HomePage> {
   final LocationService _location = LocationService();
   final DeviceActions _actions = DeviceActions();
   final WakeWordService _wake = WakeWordService();
+  final WhatsAppService _wa = WhatsAppService();
 
   AssistantState _state = AssistantState.idle;
   String _status = 'Hazır — konuşmak için bas';
   final List<_ChatMsg> _messages = [];
   final ScrollController _scroll = ScrollController();
+  _PendingWa? _pendingWa; // sesli onay bekleyen WhatsApp mesajı
 
   @override
   void initState() {
@@ -165,6 +177,9 @@ class _HomePageState extends State<HomePage> {
 
   /// Metni (buton STT'sinden veya wake word'den) işler: /chat → sesli cevap → cihaz aksiyonu.
   Future<void> _handleText(String text) async {
+    // WhatsApp onayı bekleniyorsa bu sözü onay/iptal olarak değerlendir.
+    if (_pendingWa != null && await _handleWaConfirmation(text)) return;
+
     _addMsg('Sen', text, user: true);
     try {
       _set(AssistantState.thinking, 'Düşünüyorum…');
@@ -176,16 +191,17 @@ class _HomePageState extends State<HomePage> {
       if (result.reply.trim().isNotEmpty) {
         _addMsg('Şahin', result.reply, user: false);
         _set(AssistantState.speaking, 'Cevaplıyorum…');
-        final audio = await _backend.tts(result.reply);
-        await _player.playBytes(audio);
+        await _speak(result.reply);
       }
-      final note = await _actions.dispatch(result.action, result.args);
-      if (note != null && note.trim().isNotEmpty) {
-        _addMsg('Şahin', note, user: false);
-        try {
-          final audio = await _backend.tts(note);
-          await _player.playBytes(audio);
-        } catch (_) {}
+
+      if (result.action == 'send_whatsapp') {
+        await _startWhatsAppFlow(result.args);
+      } else {
+        final note = await _actions.dispatch(result.action, result.args);
+        if (note != null && note.trim().isNotEmpty) {
+          _addMsg('Şahin', note, user: false);
+          await _speak(note);
+        }
       }
       _set(AssistantState.idle, 'Hazır — "Şahin" de ya da bas 🎤');
     } catch (e, st) {
@@ -193,6 +209,90 @@ class _HomePageState extends State<HomePage> {
       _addMsg('Şahin', 'Hata: ${_short(e)}', user: false, error: true);
       _set(AssistantState.error, 'Hata: ${_short(e)}');
     }
+  }
+
+  /// Metni seslendirir (TTS → çal). Hata olursa sessiz geçer.
+  Future<void> _speak(String text) async {
+    try {
+      final audio = await _backend.tts(text);
+      await _player.playBytes(audio);
+    } catch (_) {}
+  }
+
+  /// send_whatsapp: izni kontrol et, kişiyi numaraya çöz, sesli onay bekle.
+  /// (Gemini'nin reply'ı zaten "onaylıyor musun?" diye sordu; burada onayı bekliyoruz.)
+  Future<void> _startWhatsAppFlow(Map<String, dynamic> args) async {
+    final target = (args['target'] ?? '').toString().trim();
+    var message = (args['text'] ?? '').toString().trim();
+    if (args['include_location'] == true) {
+      final pos = _location.last;
+      if (pos != null) {
+        message +=
+            '\nKonum: https://maps.google.com/?q=${pos.latitude},${pos.longitude}';
+      }
+    }
+    if (target.isEmpty || message.isEmpty) return;
+
+    if (!await _wa.isEnabled()) {
+      const msg =
+          'WhatsApp mesajını senin için göndermem için bir kez erişilebilirlik iznini açman gerekiyor. '
+          'Ayarları açıyorum; listeden Şahin\'i bulup aç, sonra tekrar dene.';
+      _addMsg('Şahin', msg, user: false);
+      await _speak(msg);
+      await _wa.openSettings();
+      return;
+    }
+
+    final phone = await _actions.resolveWhatsAppNumber(target);
+    if (phone == null) {
+      final msg = '$target\'ı rehberde bulamadım, mesajı gönderemiyorum.';
+      _addMsg('Şahin', msg, user: false);
+      await _speak(msg);
+      return;
+    }
+
+    _pendingWa = _PendingWa(phone, message, target);
+    _addMsg(
+      'Şahin',
+      '$target → "$message"\nGöndermek için "Şahin gönder" / "evet" de, vazgeçmek için "iptal".',
+      user: false,
+    );
+  }
+
+  /// Onay bekleyen WhatsApp mesajı için yanıtı değerlendirir.
+  /// true: yanıt tüketildi (evet/hayır). false: belirsiz → normal komut gibi işlensin.
+  Future<bool> _handleWaConfirmation(String text) async {
+    final pend = _pendingWa!;
+    if (DateTime.now().difference(pend.at).inSeconds > 90) {
+      _pendingWa = null; // onay penceresi kapandı
+      return false;
+    }
+    final t = text.toLowerCase();
+    const yes = ['evet', 'gönder', 'gonder', 'yolla', 'onayla', 'olur', 'tamam', 'gönderebilirsin'];
+    const no = ['hayır', 'hayir', 'iptal', 'vazgeç', 'vazgec', 'dur', 'boş ver', 'gerek yok'];
+    if (yes.any((w) => t.contains(w))) {
+      _pendingWa = null;
+      _addMsg('Sen', text, user: true);
+      final ok = await _wa.sendWhatsApp(pend.phone, pend.message);
+      final msg = ok
+          ? '${pend.label}\'a gönderiyorum.'
+          : 'Gönderemedim — erişilebilirlik izni kapalı olabilir.';
+      _addMsg('Şahin', msg, user: false);
+      await _speak(msg);
+      _set(AssistantState.idle, 'Hazır — "Şahin" de ya da bas 🎤');
+      return true;
+    }
+    if (no.any((w) => t.contains(w))) {
+      _pendingWa = null;
+      _addMsg('Sen', text, user: true);
+      const msg = 'Tamam, göndermekten vazgeçtim.';
+      _addMsg('Şahin', msg, user: false);
+      await _speak(msg);
+      _set(AssistantState.idle, 'Hazır — "Şahin" de ya da bas 🎤');
+      return true;
+    }
+    _pendingWa = null; // belirsiz → onay iptal, normal komut gibi devam et
+    return false;
   }
 
   /// Sohbete bir balon ekler ve en alta kaydırır.

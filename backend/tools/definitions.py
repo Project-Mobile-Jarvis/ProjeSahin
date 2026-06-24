@@ -48,6 +48,30 @@ MAKE_CALL = types.FunctionDeclaration(
     ),
 )
 
+SEND_WHATSAPP = types.FunctionDeclaration(
+    name="send_whatsapp",
+    description=(
+        "WhatsApp'tan bir kişiye metin mesajı gönderir. 'anneme WhatsApp at', "
+        "'Sevdem'e geliyorum yaz', 'kardeşime mesaj gönder' gibi. Kişi cihazda rehberden çözülür. "
+        "include_location=true ise mesaja konum (Google Maps linki) eklenir ('konumu da gönder'). "
+        "ÖNEMLİ: reply MUTLAKA sesli onay sorusu olsun — ör: \"Anne'ye 'geliyorum' gönderiyorum, onaylıyor musun?\" "
+        "Asıl gönderme, kullanıcının sesli onayından sonra cihazda yapılır."
+    ),
+    parameters=types.Schema(
+        type=_OBJ,
+        properties={
+            "target": _str("Mesaj gönderilecek kişi, kullanıcının söylediği şekilde. Ör: 'anne', 'Sevdem'."),
+            "text": _str("Gönderilecek mesaj metni — kısa, Türkçe, kullanıcının kastettiği içerik."),
+            "include_location": types.Schema(
+                type=types.Type.BOOLEAN,
+                description="Mesaja konum (Maps linki) eklensin mi. Varsayılan false.",
+            ),
+            "location_query": _str("include_location ise hangi yer; boşsa kullanıcının anlık konumu kullanılır."),
+        },
+        required=["target", "text"],
+    ),
+)
+
 CHAT_REPLY = types.FunctionDeclaration(
     name="chat_reply",
     description=(
@@ -173,6 +197,7 @@ GET_PREFERENCE = types.FunctionDeclaration(
 _FUNCTIONS = [
     SET_ALARM,
     MAKE_CALL,
+    SEND_WHATSAPP,
     CHAT_REPLY,
     SEARCH_PLACES,
     WEB_SEARCH,

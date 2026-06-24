@@ -62,6 +62,26 @@ class DeviceActions {
     return null;
   }
 
+  /// Rehberden kişiyi çözüp WhatsApp için numara (sadece rakam, ülke kodlu) döndürür. Yoksa null.
+  Future<String?> resolveWhatsAppNumber(String target) async {
+    var number = await _resolveContact(target);
+    number ??= RegExp(r'\d{7,}').hasMatch(target) ? target : null;
+    if (number == null) return null;
+    return _normalizeMsisdn(number);
+  }
+
+  /// wa.me için normalize: sadece rakam, ülke kodlu (+ ve baştaki 0 atılır).
+  /// Türkiye varsayımı: 05XXXXXXXXX → 905XXXXXXXXX, 5XXXXXXXXX → 905XXXXXXXXX.
+  String _normalizeMsisdn(String raw) {
+    final plus = raw.trim().startsWith('+');
+    final d = raw.replaceAll(RegExp(r'[^\d]'), '');
+    if (plus) return d; // zaten uluslararası verilmiş
+    if (d.startsWith('00')) return d.substring(2);
+    if (d.startsWith('0')) return '90${d.substring(1)}';
+    if (d.length == 10 && d.startsWith('5')) return '90$d';
+    return d;
+  }
+
   // Akrabalık eş anlamlıları: kişi rehberde örn. "Annem" kayıtlıysa "valide" de eşleşsin.
   static const Map<String, List<String>> _kinship = {
     'anne': ['anne', 'annem', 'valide', 'anneciğim'],
