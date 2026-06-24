@@ -1,0 +1,56 @@
+"""POST /chat — metin alır, Gemini function calling ile aksiyon JSON döner (SPEC Faz 1).
+
+Sözleşme:
+  İstek:  { "session_id": "abc", "message": "saat 8'e alarm kur" }
+  Cevap:  { "action": "set_alarm", "args": {...}, "reply": "Alarm 8'e kuruldu" }
+"""
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from core import llm, memory
+from core.config import settings
+from core.security import require_api_key
+from db.database import get_db
+
+router = APIRouter()
+
+
+class ChatRequest(BaseModel):
+    session_id: str = Field(..., min_length=1, description="Konuşma oturumu kimliği")
+    message: str = Field(..., min_length=1, description="Kullanıcının metni")
+
+
+class ChatResponse(BaseModel):
+    action: str
+    args: dict
+    reply: str
+
+
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    dependencies=[Depends(require_api_key)],
+)
+def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
+    if not settings.GEMINI_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GEMINI_API_KEY ayarlı değil.",
+        )
+
+    history = memory.load_history(db, req.session_id)
+
+    try:
+        result = llm.run_chat(history, req.message)
+    except Exception as exc:  # Gemini/ağ hatası → 502
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Gemini hatası: {exc}",
+        ) from exc
+
+    # Konuşmayı kalıcılaştır (bağlam sonraki turlarda korunsun).
+    memory.save_turn(db, req.session_id, "user", req.message)
+    memory.save_turn(db, req.session_id, "model", result["reply"])
+
+    return ChatResponse(**result)

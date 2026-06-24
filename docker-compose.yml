@@ -1,0 +1,29 @@
+# Yerel geliştirme için PostgreSQL. SADECE local — production'da Railway Postgres kullanılır.
+# Buradaki kullanıcı/parola yerel geliştirme değeridir (gerçek sır değil). Yine de istersen
+# kök .env'e POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB koyarak ezebilirsin.
+#
+# Başlat:   docker compose up -d
+# Durdur:   docker compose down
+# Sıfırla:  docker compose down -v   (veriyi de siler)
+
+services:
+  db:
+    image: postgres:16
+    container_name: jarvis_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jarvis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jarvis_local_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-jarvis}
+    ports:
+      - "5432:5432"
+    volumes:
+      - jarvis_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jarvis} -d ${POSTGRES_DB:-jarvis}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  jarvis_pgdata:

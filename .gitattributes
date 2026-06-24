@@ -1,0 +1,13 @@
+# Tüm metin dosyaları repoda LF ile saklanır (Railway/Linux deploy için tutarlı).
+* text=auto eol=lf
+
+# İkili dosyalar (ileriki fazlar: ses modelleri, görseller)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.zip binary
+*.onnx binary
+*.tflite binary
+*.ppn binary
+*.keystore binary
+*.jks binary

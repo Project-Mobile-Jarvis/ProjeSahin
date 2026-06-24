@@ -1,0 +1,54 @@
+# === SIRLAR — ASLA COMMIT EDİLMEZ (SPEC bölüm 7) ===
+.env
+.env.*
+!.env.example
+# Google servis hesabı / credential JSON'ları (railway.json HARİÇ tutulur)
+*credentials*.json
+*credential*.json
+service-account*.json
+service_account*.json
+gcp-*.json
+google-*.json
+credentials/
+secrets/
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# === Flutter / Dart (Faz 5+) ===
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/build/
+app/.gradle/
+app/android/local.properties
+app/**/*.g.dart
+*.keystore
+*.jks
+key.properties
+
+# === IDE / OS ===
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Veri / log ===
+*.log
+*.sqlite
+*.db
