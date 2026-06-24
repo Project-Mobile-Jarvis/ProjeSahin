@@ -7,10 +7,12 @@ import 'services/backend.dart';
 import 'services/location.dart';
 import 'services/player.dart';
 import 'services/recorder.dart';
+import 'services/foreground.dart';
 import 'services/wakeword.dart';
 import 'services/whatsapp.dart';
 
 void main() {
+  ForegroundWakeService.initPort(); // TaskHandler <-> UI iletişim portu (runApp'tan önce)
   runApp(const SahinApp());
 }
 
@@ -90,6 +92,13 @@ class _HomePageState extends State<HomePage> {
   Future<void> _bootstrap() async {
     await Permission.microphone.request();
     await _initWake();
+    // Faz 10: arka plan dinleme — mikrofon tipli foreground servis (süreç canlı kalsın).
+    try {
+      await ForegroundWakeService.startIfPermitted();
+      await ForegroundWakeService.ensureOverlayPermission();
+    } catch (e) {
+      debugPrint('JARVIS foreground servis hata: $e');
+    }
   }
 
   @override
@@ -135,6 +144,7 @@ class _HomePageState extends State<HomePage> {
   /// Komut hazır (tek nefes "şahin X" ya da "şahin" sonrası ayrı cümle) → işle.
   Future<void> _onWakeCommand(String command) async {
     if (_busy || _state == AssistantState.recording) return;
+    await ForegroundWakeService.bringToFrontIfBackground(); // arka plandaysa öne getir
     await _wake.stop(); // işleme + TTS sırasında kapat (self-trigger yok)
     await _handleText(command);
     await _restartWake();

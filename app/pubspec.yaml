@@ -45,6 +45,7 @@ dependencies:
   android_intent_plus: ^6.0.0
   flutter_contacts: ^2.1.0
   vosk_flutter_2: ^1.0.5
+  flutter_foreground_task: ^9.1.0
 
 dev_dependencies:
   flutter_test:
