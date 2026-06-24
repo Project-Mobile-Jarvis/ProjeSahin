@@ -197,16 +197,16 @@ class _HomePageState extends State<HomePage> {
       final result =
           await _backend.chat(text, lat: pos?.latitude, lng: pos?.longitude);
 
-      // Önce kısa sesli cevap, sonra cihaz aksiyonu (Maps/dialer uygulamayı öne alabilir).
-      if (result.reply.trim().isNotEmpty) {
-        _addMsg('Şahin', result.reply, user: false);
-        _set(AssistantState.speaking, 'Cevaplıyorum…');
-        await _speak(result.reply);
-      }
-
       if (result.action == 'send_whatsapp') {
+        // Onay cümlesini _startWhatsAppFlow kendisi üretir + seslendirir (Gemini reply'ına bağlı değil).
         await _startWhatsAppFlow(result.args);
       } else {
+        // Önce kısa sesli cevap, sonra cihaz aksiyonu (Maps/dialer uygulamayı öne alabilir).
+        if (result.reply.trim().isNotEmpty) {
+          _addMsg('Şahin', result.reply, user: false);
+          _set(AssistantState.speaking, 'Cevaplıyorum…');
+          await _speak(result.reply);
+        }
         final note = await _actions.dispatch(result.action, result.args);
         if (note != null && note.trim().isNotEmpty) {
           _addMsg('Şahin', note, user: false);
@@ -233,21 +233,16 @@ class _HomePageState extends State<HomePage> {
   /// (Gemini'nin reply'ı zaten "onaylıyor musun?" diye sordu; burada onayı bekliyoruz.)
   Future<void> _startWhatsAppFlow(Map<String, dynamic> args) async {
     final target = (args['target'] ?? '').toString().trim();
-    var message = (args['text'] ?? '').toString().trim();
-    if (args['include_location'] == true) {
-      final pos = _location.last;
-      if (pos != null) {
-        message +=
-            '\nKonum: https://maps.google.com/?q=${pos.latitude},${pos.longitude}';
-      }
-    }
-    if (target.isEmpty || message.isEmpty) return;
+    final spokenText = (args['text'] ?? '').toString().trim();
+    final includeLoc = args['include_location'] == true;
+    if (target.isEmpty || spokenText.isEmpty) return;
 
     if (!await _wa.isEnabled()) {
       const msg =
           'WhatsApp mesajını senin için göndermem için bir kez erişilebilirlik iznini açman gerekiyor. '
           'Ayarları açıyorum; listeden Şahin\'i bulup aç, sonra tekrar dene.';
       _addMsg('Şahin', msg, user: false);
+      _set(AssistantState.speaking, 'Cevaplıyorum…');
       await _speak(msg);
       await _wa.openSettings();
       return;
@@ -257,17 +252,30 @@ class _HomePageState extends State<HomePage> {
     if (phone == null) {
       final msg = '$target\'ı rehberde bulamadım, mesajı gönderemiyorum.';
       _addMsg('Şahin', msg, user: false);
+      _set(AssistantState.speaking, 'Cevaplıyorum…');
       await _speak(msg);
       return;
     }
 
+    // Gönderilecek tam metin (gerekirse konum linkiyle). Sesli okurken linki okumayız.
+    var message = spokenText;
+    if (includeLoc) {
+      final pos = _location.last;
+      if (pos != null) {
+        message +=
+            '\nKonum: https://maps.google.com/?q=${pos.latitude},${pos.longitude}';
+      }
+    }
+
     _pendingWa = _PendingWa(phone, message, target);
-    _armNextListen = true; // mic otomatik açılsın; "Şahin" demeden "gönder/evet" diyebil
-    _addMsg(
-      'Şahin',
-      '$target → "$message"\nMikrofon açık — "gönder"/"evet" de, vazgeçmek için "iptal".',
-      user: false,
-    );
+    _armNextListen = true; // mic otomatik açılsın; "Şahin" demeden onay söylenebilsin
+    // Onay cümlesini UYGULAMA üretir ve seslendirir (her zaman okunsun diye).
+    final confirm = includeLoc
+        ? '$target\'a "$spokenText" yazıp konumu da ekliyorum. Göndereyim mi?'
+        : '$target\'a "$spokenText" gönderiyorum. Onaylıyor musun?';
+    _addMsg('Şahin', '$confirm\n(mikrofon açık — "gönder" / "iptal")', user: false);
+    _set(AssistantState.speaking, 'Cevaplıyorum…');
+    await _speak(confirm);
   }
 
   /// Onay bekleyen WhatsApp mesajı için yanıtı değerlendirir.
