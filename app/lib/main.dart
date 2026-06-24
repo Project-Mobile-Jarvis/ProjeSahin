@@ -78,6 +78,7 @@ class _HomePageState extends State<HomePage> {
   final ScrollController _scroll = ScrollController();
   _PendingWa? _pendingWa; // sesli onay bekleyen WhatsApp mesajı
   bool _armNextListen = false; // sonraki dinleme "Şahin"siz komut beklesin (sesli onay için)
+  int _waAttempts = 0; // belirsiz onay yanıtı sayacı (sonsuz döngüyü önler)
 
   @override
   void initState() {
@@ -268,6 +269,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     _pendingWa = _PendingWa(phone, message, target);
+    _waAttempts = 0;
     _armNextListen = true; // mic otomatik açılsın; "Şahin" demeden onay söylenebilsin
     // Onay cümlesini UYGULAMA üretir ve seslendirir (her zaman okunsun diye).
     final confirm = includeLoc
@@ -284,34 +286,69 @@ class _HomePageState extends State<HomePage> {
     final pend = _pendingWa!;
     if (DateTime.now().difference(pend.at).inSeconds > 90) {
       _pendingWa = null; // onay penceresi kapandı
+      _waAttempts = 0;
       return false;
     }
     final t = text.toLowerCase();
-    const yes = ['evet', 'gönder', 'gonder', 'yolla', 'onayla', 'olur', 'tamam', 'gönderebilirsin'];
-    const no = ['hayır', 'hayir', 'iptal', 'vazgeç', 'vazgec', 'dur', 'boş ver', 'gerek yok'];
-    if (yes.any((w) => t.contains(w))) {
+    const yes = [
+      'evet', 'gönder', 'gonder', 'onay', 'yolla', 'olur', 'tamam',
+      'tabii', 'tabi', 'peki', 'okey', 'gönderebilirsin'
+    ];
+    const no = [
+      'iptal', 'vazgeç', 'vazgec', 'hayır', 'hayir', 'dur',
+      'boş ver', 'bos ver', 'gerek yok', 'istemiyorum', 'yok'
+    ];
+    final isYes = yes.any((w) => t.contains(w));
+    final isNo = no.any((w) => t.contains(w));
+
+    if (isYes && !isNo) {
       _pendingWa = null;
+      _waAttempts = 0;
       _addMsg('Sen', text, user: true);
       final ok = await _wa.sendWhatsApp(pend.phone, pend.message);
       final msg = ok
           ? '${pend.label}\'a gönderiyorum.'
           : 'Gönderemedim — erişilebilirlik izni kapalı olabilir.';
       _addMsg('Şahin', msg, user: false);
+      _set(AssistantState.speaking, 'Cevaplıyorum…');
       await _speak(msg);
       _set(AssistantState.idle, 'Hazır — "Şahin" de ya da bas 🎤');
       return true;
     }
-    if (no.any((w) => t.contains(w))) {
+
+    if (isNo) {
       _pendingWa = null;
+      _waAttempts = 0;
       _addMsg('Sen', text, user: true);
       const msg = 'Tamam, göndermekten vazgeçtim.';
       _addMsg('Şahin', msg, user: false);
+      _set(AssistantState.speaking, 'Cevaplıyorum…');
       await _speak(msg);
       _set(AssistantState.idle, 'Hazır — "Şahin" de ya da bas 🎤');
       return true;
     }
-    _pendingWa = null; // belirsiz → onay iptal, normal komut gibi devam et
-    return false;
+
+    // Belirsiz yanıt: /chat'e DÜŞME (yoksa Gemini send_whatsapp'ı tekrar çağırır → döngü).
+    _addMsg('Sen', text, user: true);
+    _waAttempts++;
+    if (_waAttempts < 2) {
+      _armNextListen = true; // mic'i tekrar aç
+      const msg = 'Anlayamadım — göndereyim mi? "gönder" ya da "iptal" de.';
+      _addMsg('Şahin', msg, user: false);
+      _set(AssistantState.speaking, 'Cevaplıyorum…');
+      await _speak(msg);
+      _set(AssistantState.idle, 'Hazır');
+      return true;
+    }
+    // İkinci belirsizlikte pes et — iptal.
+    _pendingWa = null;
+    _waAttempts = 0;
+    const msg = 'Tamam, şimdilik göndermiyorum.';
+    _addMsg('Şahin', msg, user: false);
+    _set(AssistantState.speaking, 'Cevaplıyorum…');
+    await _speak(msg);
+    _set(AssistantState.idle, 'Hazır — "Şahin" de ya da bas 🎤');
+    return true;
   }
 
   /// Sohbete bir balon ekler ve en alta kaydırır.
