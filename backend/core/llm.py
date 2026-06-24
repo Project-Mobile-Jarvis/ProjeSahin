@@ -5,13 +5,23 @@
 - Gemini'nin döndürdüğü function_call ayrıştırılıp {action, args, reply} olarak döner.
 - Aksiyonu backend uygulamaz; Flutter uygular (SPEC kuralı).
 """
+import logging
+import time
 from typing import Any
 
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types
 
 from core.config import settings
 from tools.definitions import TOOLS
+
+logger = logging.getLogger("jarvis.llm")
+
+# Gemini ara sıra geçici hata döndürür (503 model yoğunluğu, 429 hız limiti, 500).
+# Kısa exponential backoff ile birkaç kez tekrar dene — kullanıcı dalgalanmayı hissetmesin.
+_RETRYABLE_CODES = {429, 500, 503}
+_MAX_ATTEMPTS = 3
 
 SYSTEM_INSTRUCTION = (
     "Sen Şahin'sin: Furkan'ın Türkçe sesli kişisel asistanı. "
@@ -75,16 +85,36 @@ def _to_contents(history: list[dict[str, str]], user_message: str) -> list[types
     return contents
 
 
+def _generate(client: genai.Client, contents: list[types.Content]):
+    """generate_content'i geçici hatalarda backoff ile tekrar dener."""
+    delay = 1.0
+    last_exc: Exception | None = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            return client.models.generate_content(
+                model=settings.GEMINI_MODEL,
+                contents=contents,
+                config=_config(),
+            )
+        except genai_errors.APIError as exc:
+            last_exc = exc
+            if getattr(exc, "code", None) not in _RETRYABLE_CODES or attempt == _MAX_ATTEMPTS:
+                raise
+            logger.warning(
+                "Gemini geçici hata (code=%s), %.0fs sonra tekrar (%d/%d)",
+                getattr(exc, "code", "?"), delay, attempt, _MAX_ATTEMPTS,
+            )
+            time.sleep(delay)
+            delay *= 2
+    raise last_exc  # pragma: no cover (ulaşılmaz)
+
+
 def run_chat(history: list[dict[str, str]], user_message: str) -> dict[str, Any]:
     """Bir konuşma turu çalıştırır. Döner: {action, args, reply}."""
     client = _get_client()
     contents = _to_contents(history, user_message)
 
-    response = client.models.generate_content(
-        model=settings.GEMINI_MODEL,
-        contents=contents,
-        config=_config(),
-    )
+    response = _generate(client, contents)
 
     candidates = response.candidates or []
     if not candidates or candidates[0].content is None:
