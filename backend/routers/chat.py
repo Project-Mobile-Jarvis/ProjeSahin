@@ -1,8 +1,9 @@
-"""POST /chat — metin alır, Gemini function calling ile aksiyon JSON döner (SPEC Faz 1).
+"""POST /chat — metin alır, Gemini agentic function calling ile aksiyon JSON döner (SPEC Faz 1+4).
 
 Sözleşme:
-  İstek:  { "session_id": "abc", "message": "saat 8'e alarm kur" }
+  İstek:  { "session_id": "abc", "message": "...", "location": {"lat":.., "lng":..}? }
   Cevap:  { "action": "set_alarm", "args": {...}, "reply": "Alarm 8'e kuruldu" }
+location: Flutter anlık GPS'i (opsiyonel) — 'en yakın', 'çevremde', save_location için.
 """
 import logging
 
@@ -14,15 +15,23 @@ from core import llm, memory
 from core.config import settings
 from core.security import require_api_key
 from db.database import get_db
+from db.models import DEFAULT_USER
+from tools.registry import ToolContext
 
 logger = logging.getLogger("jarvis.chat")
 
 router = APIRouter()
 
 
+class Location(BaseModel):
+    lat: float
+    lng: float
+
+
 class ChatRequest(BaseModel):
     session_id: str = Field(..., min_length=1, description="Konuşma oturumu kimliği")
     message: str = Field(..., min_length=1, description="Kullanıcının metni")
+    location: Location | None = Field(default=None, description="Anlık GPS (opsiyonel)")
 
 
 class ChatResponse(BaseModel):
@@ -44,9 +53,15 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         )
 
     history = memory.load_history(db, req.session_id)
+    ctx = ToolContext(
+        db=db,
+        user_id=DEFAULT_USER,
+        lat=req.location.lat if req.location else None,
+        lng=req.location.lng if req.location else None,
+    )
 
     try:
-        result = llm.run_chat(history, req.message)
+        result = llm.run_chat(history, req.message, ctx)
     except Exception as exc:  # Gemini/ağ hatası → 502 (ham hata istemciye sızdırılmaz)
         logger.exception("Gemini çağrısı başarısız (session=%s)", req.session_id)
         raise HTTPException(

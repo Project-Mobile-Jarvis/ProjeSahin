@@ -47,9 +47,15 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-flash-latest"
     # Birincil model geçici 503/429/504 verirse sırayla denenecek yedekler (virgülle).
     GEMINI_FALLBACK_MODELS: str = "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-3-flash-preview"
-    # "Thinking" gecikme ekler; sesli asistanda kısa komut/sohbet için 0 = kapalı (hızlı).
-    # Faz 4'te karmaşık çok-adımlı akıl yürütme için yükseltilebilir (env ile).
-    GEMINI_THINKING_BUDGET: int = 0
+    # Thinking: -1 = modelin varsayılanı (Gemini 3'te çok-adımlı/agentic tool kullanımı için
+    # gereken thought_signature'ı üretir — yoksa round-trip'te 400). 0 = kapalı (hızlı ama
+    # Gemini 3'te server-tool döngüsünü bozar). Pozitif sayı = sabit düşünme bütçesi.
+    GEMINI_THINKING_BUDGET: int = -1
+    # Yerleşik google_search grounding (web araması). 429 kotada zarifçe grounding'siz devam eder.
+    GEMINI_GROUNDING: bool = True
+
+    # --- Google Places (Faz 4) ---
+    GOOGLE_PLACES_API_KEY: str = ""
 
     def model_chain(self) -> list[str]:
         """Denenecek modeller: birincil + yedekler (tekrarsız, sıralı)."""

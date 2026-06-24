@@ -12,13 +12,17 @@ Tam spec: SPEC.md (her zaman ona başvur).
       → Repo: github.com/Project-Mobile-Jarvis/ProjeSahin (main, auto-deploy)
 - [x] Faz 2 — /stt (Groq Whisper, whisper-large-v3-turbo, language=tr) — Railway'de CANLI (ses→metin→/chat e2e doğrulandı)
 - [x] Faz 3 — /tts (Google Chirp 3 HD, varsayılan ses tr-TR-Chirp3-HD-Achird) — Railway'de CANLI (metin→mp3 doğrulandı)
-- [ ] Faz 4 — Places + grounding + kişisel hafıza tool'ları
+- [~] Faz 4 — Agentic döngü + tool'lar: navigate_to, save/get_saved_location, save/get_preference
+      grounding (google_search). search_places (Places API). save/get + navigate ("eve götür") + grounding YEREL doğrulandı.
+      search_places: Places API anahtarı bekliyor. Railway'e GOOGLE_PLACES_API_KEY eklenecek.
 - [ ] Faz 5–9 — Flutter app   [ ] Faz 10 — Proaktif (opsiyonel)
 
 ## Tech Stack
 - Backend: FastAPI + Uvicorn, Python 3.13. Deploy: Railway. DB: Railway PostgreSQL (SQLAlchemy 2.0 + Alembic).
 - LLM: Google Gemini, `google-genai` SDK (function calling + yerleşik google_search grounding).
-  Model: `gemini-flash-latest` (birincil, en iyi hız/performans) + GEMINI_FALLBACK_MODELS zinciri; 503/504 yoğunlukta yedeğe geçer. SDK iç retry kapalı, 15s timeout, thinking kapalı (GEMINI_THINKING_BUDGET=0, hız için; Faz 4'te artırılabilir).
+  Model: `gemini-flash-latest` (birincil) + GEMINI_FALLBACK_MODELS zinciri; 503/504 yoğunlukta yedeğe geçer; konuşma boyunca model SABİTLENİR (thought_signature tutarlılığı). SDK iç retry kapalı.
+  Thinking: GEMINI_THINKING_BUDGET=-1 (modelin varsayılanı) — Gemini 3 agentic/çok-adımlı tool kullanımı thought_signature gerektirir; 0 yaparsan server-tool döngüsü 400 verir.
+  Agentic döngü: sunucu tool'ları (search_places, locations, preferences) backend çalıştırıp Gemini'ye geri besler; cihaz tool'ları (navigate_to, set_alarm, make_call) Flutter'a döner. Kod: backend/core/llm.py, backend/tools/registry.py.
 - STT online: Groq Whisper (whisper-large-v3-turbo). Offline: Vosk (tr-0.3).
 - TTS online: Google Cloud TTS (tr-TR-Chirp3-HD-*). Offline: Piper (sherpa-onnx).
 - App: Flutter/Dart. Native köprü: Kotlin (sadece AccessibilityService).
