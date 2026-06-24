@@ -1,13 +1,17 @@
 """JARVIS backend — FastAPI giriş noktası.
 
-Faz 0: /health (DB ping dahil).
-Faz 1: /chat router eklenir.
+Faz 0: /health (DB ping).
+Faz 1: /chat router.
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from sqlalchemy import text
 
+from core.config import check_production_config
 from db.database import engine
 from routers import chat
+
+# Production'da eksik/zayıf sır varsa burada temiz bir hatayla dur (fail-fast).
+check_production_config()
 
 app = FastAPI(title="JARVIS Backend", version="0.1.0")
 
@@ -16,11 +20,14 @@ app.include_router(chat.router)
 
 @app.get("/health")
 def health() -> dict:
-    """Liveness + DB bağlantı kontrolü. Her zaman 200 döner; 'db' alanı durumu gösterir."""
-    db_status = "ok"
+    """Liveness + DB bağlantı kontrolü.
+
+    DB erişilebilir değilse 503 döner — Railway healthcheck'inin instance'ı
+    'hazır değil' saymasını sağlar (yanlışlıkla trafik yönlendirilmesin).
+    """
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-    except Exception:
-        db_status = "error"
-    return {"status": "ok" if db_status == "ok" else "degraded", "db": db_status}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail="db unavailable") from exc
+    return {"status": "ok", "db": "ok"}

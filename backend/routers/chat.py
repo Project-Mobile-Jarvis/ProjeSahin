@@ -4,6 +4,8 @@ Sözleşme:
   İstek:  { "session_id": "abc", "message": "saat 8'e alarm kur" }
   Cevap:  { "action": "set_alarm", "args": {...}, "reply": "Alarm 8'e kuruldu" }
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -12,6 +14,8 @@ from core import llm, memory
 from core.config import settings
 from core.security import require_api_key
 from db.database import get_db
+
+logger = logging.getLogger("jarvis.chat")
 
 router = APIRouter()
 
@@ -43,10 +47,11 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
 
     try:
         result = llm.run_chat(history, req.message)
-    except Exception as exc:  # Gemini/ağ hatası → 502
+    except Exception as exc:  # Gemini/ağ hatası → 502 (ham hata istemciye sızdırılmaz)
+        logger.exception("Gemini çağrısı başarısız (session=%s)", req.session_id)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Gemini hatası: {exc}",
+            detail="Gemini isteği başarısız. Lütfen tekrar dene.",
         ) from exc
 
     # Konuşmayı kalıcılaştır (bağlam sonraki turlarda korunsun).
