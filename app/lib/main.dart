@@ -37,6 +37,15 @@ class SahinApp extends StatelessWidget {
 
 enum AssistantState { idle, recording, thinking, speaking, error }
 
+/// Ekrandaki tek bir sohbet balonu (kullanıcı veya Şahin).
+class _ChatMsg {
+  final String who;
+  final String text;
+  final bool user;
+  final bool error;
+  _ChatMsg(this.who, this.text, this.user, this.error);
+}
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -54,9 +63,8 @@ class _HomePageState extends State<HomePage> {
 
   AssistantState _state = AssistantState.idle;
   String _status = 'Hazır — konuşmak için bas';
-  String _transcript = '';
-  String _reply = '';
-  String _action = '';
+  final List<_ChatMsg> _messages = [];
+  final ScrollController _scroll = ScrollController();
 
   @override
   void initState() {
@@ -74,6 +82,7 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _recorder.dispose();
     _player.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -129,11 +138,6 @@ class _HomePageState extends State<HomePage> {
     }
     await _recorder.start();
     _set(AssistantState.recording, 'Dinliyorum… (bitince bas)');
-    setState(() {
-      _transcript = '';
-      _reply = '';
-      _action = '';
-    });
   }
 
   Future<void> _processRecording() async {
@@ -161,30 +165,23 @@ class _HomePageState extends State<HomePage> {
 
   /// Metni (buton STT'sinden veya wake word'den) işler: /chat → sesli cevap → cihaz aksiyonu.
   Future<void> _handleText(String text) async {
-    setState(() {
-      _transcript = text;
-      _reply = '';
-      _action = '';
-    });
+    _addMsg('Sen', text, user: true);
     try {
       _set(AssistantState.thinking, 'Düşünüyorum…');
       final pos = _location.last;
       final result =
           await _backend.chat(text, lat: pos?.latitude, lng: pos?.longitude);
-      setState(() {
-        _reply = result.reply;
-        _action = result.action;
-      });
 
       // Önce kısa sesli cevap, sonra cihaz aksiyonu (Maps/dialer uygulamayı öne alabilir).
       if (result.reply.trim().isNotEmpty) {
+        _addMsg('Şahin', result.reply, user: false);
         _set(AssistantState.speaking, 'Cevaplıyorum…');
         final audio = await _backend.tts(result.reply);
         await _player.playBytes(audio);
       }
       final note = await _actions.dispatch(result.action, result.args);
       if (note != null && note.trim().isNotEmpty) {
-        setState(() => _reply = note);
+        _addMsg('Şahin', note, user: false);
         try {
           final audio = await _backend.tts(note);
           await _player.playBytes(audio);
@@ -193,8 +190,24 @@ class _HomePageState extends State<HomePage> {
       _set(AssistantState.idle, 'Hazır — "Şahin" de ya da bas 🎤');
     } catch (e, st) {
       debugPrint('JARVIS hata: $e\n$st');
+      _addMsg('Şahin', 'Hata: ${_short(e)}', user: false, error: true);
       _set(AssistantState.error, 'Hata: ${_short(e)}');
     }
+  }
+
+  /// Sohbete bir balon ekler ve en alta kaydırır.
+  void _addMsg(String who, String text, {required bool user, bool error = false}) {
+    if (!mounted) return;
+    setState(() => _messages.add(_ChatMsg(who, text, user, error)));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   String _short(Object e) {
@@ -237,20 +250,33 @@ class _HomePageState extends State<HomePage> {
                     style: TextStyle(color: Colors.redAccent),
                   ),
                 ),
-              const Spacer(),
-              if (_transcript.isNotEmpty)
-                _bubble('Sen', _transcript, Alignment.centerRight,
-                    const Color(0xFF1E2730)),
-              if (_reply.isNotEmpty)
-                _bubble('Şahin', _reply, Alignment.centerLeft,
-                    const Color(0xFF13322E)),
-              if (_action.isNotEmpty && _action != 'chat_reply')
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text('aksiyon: $_action',
-                      style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                ),
-              const Spacer(),
+              Expanded(
+                child: _messages.isEmpty
+                    ? const Center(
+                        child: Text(
+                          '"Şahin" de ya da mikrofona bas 🎤',
+                          style: TextStyle(color: Colors.white24),
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: _scroll,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: _messages.length,
+                        itemBuilder: (_, i) {
+                          final m = _messages[i];
+                          return _bubble(
+                            m.who,
+                            m.text,
+                            m.user ? Alignment.centerRight : Alignment.centerLeft,
+                            m.error
+                                ? const Color(0xFF3A1E1E)
+                                : (m.user
+                                    ? const Color(0xFF1E2730)
+                                    : const Color(0xFF13322E)),
+                          );
+                        },
+                      ),
+              ),
               Text(
                 _status,
                 textAlign: TextAlign.center,
