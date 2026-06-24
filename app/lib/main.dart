@@ -77,6 +77,7 @@ class _HomePageState extends State<HomePage> {
   final List<_ChatMsg> _messages = [];
   final ScrollController _scroll = ScrollController();
   _PendingWa? _pendingWa; // sesli onay bekleyen WhatsApp mesajı
+  bool _armNextListen = false; // sonraki dinleme "Şahin"siz komut beklesin (sesli onay için)
 
   @override
   void initState() {
@@ -135,7 +136,16 @@ class _HomePageState extends State<HomePage> {
     if (_busy || _state == AssistantState.recording) return;
     await _wake.stop(); // işleme + TTS sırasında kapat (self-trigger yok)
     await _handleText(command);
+    await _restartWake();
+  }
+
+  /// Wake'i geri açar; bir onay bekleniyorsa "Şahin"siz doğrudan komut dinlemeye geçer.
+  Future<void> _restartWake() async {
     await _wake.start();
+    if (_armNextListen) {
+      _armNextListen = false;
+      _wake.armForCommand();
+    }
   }
 
   Future<void> _startRecording() async {
@@ -156,7 +166,7 @@ class _HomePageState extends State<HomePage> {
     final path = await _recorder.stop();
     if (path == null) {
       _set(AssistantState.error, 'Kayıt alınamadı');
-      await _wake.start();
+      await _restartWake();
       return;
     }
     try {
@@ -171,7 +181,7 @@ class _HomePageState extends State<HomePage> {
       debugPrint('JARVIS hata: $e\n$st');
       _set(AssistantState.error, 'Hata: ${_short(e)}');
     } finally {
-      await _wake.start(); // buton akışı bitince wake'i geri aç
+      await _restartWake(); // buton akışı bitince wake'i geri aç (onay varsa komuta arm)
     }
   }
 
@@ -252,9 +262,10 @@ class _HomePageState extends State<HomePage> {
     }
 
     _pendingWa = _PendingWa(phone, message, target);
+    _armNextListen = true; // mic otomatik açılsın; "Şahin" demeden "gönder/evet" diyebil
     _addMsg(
       'Şahin',
-      '$target → "$message"\nGöndermek için "Şahin gönder" / "evet" de, vazgeçmek için "iptal".',
+      '$target → "$message"\nMikrofon açık — "gönder"/"evet" de, vazgeçmek için "iptal".',
       user: false,
     );
   }

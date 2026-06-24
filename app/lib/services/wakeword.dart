@@ -42,6 +42,15 @@ class WakeWordService {
     _speech?.onResult().listen(_handleResult);
   }
 
+  /// "Şahin" demeden doğrudan komut bekle — sesli onay sonrası otomatik dinleme için.
+  /// (Sıradaki cümle, başında "Şahin" olmasa da komut olarak gelir.)
+  void armForCommand() {
+    _awaiting = true;
+    _onWake?.call();
+    _awaitTimer?.cancel();
+    _awaitTimer = Timer(const Duration(seconds: 10), () => _awaiting = false);
+  }
+
   void _handleResult(String json) {
     String text;
     try {
