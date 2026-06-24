@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # --- Groq STT (Faz 2) ---
     GROQ_API_KEY: str = ""
-    GROQ_STT_MODEL: str = "whisper-large-v3-turbo"
+    GROQ_STT_MODEL: str = "whisper-large-v3"  # turbo'dan daha doğru (az daha yavaş)
 
     # --- Google Cloud TTS (Faz 3) ---
     # Servis hesabı: ya GOOGLE_APPLICATION_CREDENTIALS (dosya yolu, yerel),

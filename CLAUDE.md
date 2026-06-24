@@ -24,7 +24,7 @@ Tam spec: SPEC.md (her zaman ona başvur).
   Model: `gemini-flash-latest` (birincil) + GEMINI_FALLBACK_MODELS zinciri; 503/504 yoğunlukta yedeğe geçer; konuşma boyunca model SABİTLENİR (thought_signature tutarlılığı). SDK iç retry kapalı.
   Thinking: GEMINI_THINKING_BUDGET=-1 (modelin varsayılanı) — Gemini 3 agentic/çok-adımlı tool kullanımı thought_signature gerektirir; 0 yaparsan server-tool döngüsü 400 verir.
   Agentic döngü: sunucu tool'ları (search_places, locations, preferences) backend çalıştırıp Gemini'ye geri besler; cihaz tool'ları (navigate_to, set_alarm, make_call) Flutter'a döner. Kod: backend/core/llm.py, backend/tools/registry.py.
-- STT online: Groq Whisper (whisper-large-v3-turbo). Offline: Vosk (tr-0.3).
+- STT online: Groq Whisper (whisper-large-v3). Offline: Vosk (tr-0.3) — wake word de Vosk.
 - TTS online: Google Cloud TTS (tr-TR-Chirp3-HD-*). Offline: Piper (sherpa-onnx).
 - App: Flutter/Dart. Native köprü: Kotlin (sadece AccessibilityService).
 - Wake word: Porcupine, custom keyword "Şahin".
