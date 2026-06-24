@@ -5,7 +5,9 @@
   backend çalıştırır, sonucu geri besler, Gemini devam eder. CİHAZ tool'u (navigate_to,
   set_alarm...) gelince {action,args,reply} olarak döndürülür (Flutter uygular).
 - Model konuşma boyunca SABİTLENİR (Gemini 3 thought_signature tutarlılığı için).
-- Grounding (google_search) açık; 429 kotada grounding'siz zarifçe devam eder.
+- Web araması: google_search ile function_declarations AYNI istekte 400 verdiği için
+  grounding ana döngüye konmaz. Bunun yerine web_search SUNUCU tool'u (tools/websearch.py)
+  ayrı, FC'siz bir grounding çağrısı yapar; sonuç döngüye geri beslenir.
 """
 import logging
 import time
@@ -31,8 +33,9 @@ SYSTEM_INSTRUCTION = (
     "Kısa, net ve samimi (kanka tarzı, abartısız) konuşursun; cevaplar sesli okunacağı için KISA olsun. "
     "İsteği en uygun fonksiyonu çağırarak yerine getir:\n"
     "- Cihaz aksiyonları: set_alarm, make_call, navigate_to (Maps navigasyonu başlatır).\n"
-    "- Mekan/araştırma: search_places (gerçek mekanlar — ASLA mekan uydurma), "
-    "genel/güncel bilgi için web aramanı kullan.\n"
+    "- Mekan/araştırma: search_places (gerçek mekanlar — ASLA mekan uydurma).\n"
+    "- Güncel/genel bilgi (haber, tarih, akademik takvim, hava durumu, 'kim/ne/ne zaman'): "
+    "web_search çağır. Bilmediğin veya güncel bir şeyi ASLA uydurma — web_search kullan.\n"
     "- Kişisel hafıza: save_location/get_saved_location (ev/iş), save_preference/get_preference.\n"
     "'Eve/işe götür' denince ÖNCE get_saved_location ile konumu çek, SONRA navigate_to'yu o lat/lng ile çağır. "
     "'En yakın X'e git/götür' gibi navigasyonda ÖNCE search_places ile yeri bul (en iyi sonucun lat/lng'sini al), "

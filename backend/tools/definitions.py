@@ -82,6 +82,23 @@ SEARCH_PLACES = types.FunctionDeclaration(
     ),
 )
 
+WEB_SEARCH = types.FunctionDeclaration(
+    name="web_search",
+    description=(
+        "Güncel veya genel bilgi için web'de arama yapar: haberler, tarihler, akademik takvim, "
+        "hava durumu, fiyatlar, 'kim/ne/ne zaman/nerede' soruları, bilmediğin güncel olgular. "
+        "Cihaz aksiyonu olmayan ama doğru/güncel bilgi gerektiren her soruda kullan. "
+        "Kendi bilgini uydurma — emin değilsen bunu çağır. SUNUCU çalıştırır."
+    ),
+    parameters=types.Schema(
+        type=_OBJ,
+        properties={
+            "query": _str("Web'de aranacak net sorgu, ör: '2025-2026 Muğla Sıtkı Koçman akademik takvim'."),
+        },
+        required=["query"],
+    ),
+)
+
 NAVIGATE_TO = types.FunctionDeclaration(
     name="navigate_to",
     description=(
@@ -158,6 +175,7 @@ _FUNCTIONS = [
     MAKE_CALL,
     CHAT_REPLY,
     SEARCH_PLACES,
+    WEB_SEARCH,
     NAVIGATE_TO,
     SAVE_LOCATION,
     GET_SAVED_LOCATION,

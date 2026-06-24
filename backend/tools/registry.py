@@ -9,13 +9,14 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from tools import locations, places, preferences
+from tools import locations, places, preferences, websearch
 
 logger = logging.getLogger("jarvis.tools")
 
 # Backend'in çalıştırıp sonucunu Gemini'ye geri beslediği tool'lar.
 SERVER_TOOLS = {
     "search_places",
+    "web_search",
     "save_location",
     "get_saved_location",
     "save_preference",
@@ -43,6 +44,8 @@ def execute_server_tool(name: str, args: dict[str, Any], ctx: ToolContext) -> di
                 lat=ctx.lat,
                 lng=ctx.lng,
             )
+        if name == "web_search":
+            return websearch.web_search(args.get("query", ""))
         if name == "save_location":
             return locations.save_location(
                 ctx.db, args.get("label", ""), ctx.lat, ctx.lng, ctx.user_id
