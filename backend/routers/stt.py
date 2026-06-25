@@ -6,7 +6,7 @@ Sözleşme:
 """
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from core import stt
 from core.config import settings
@@ -18,7 +18,7 @@ router = APIRouter()
 
 
 @router.post("/stt", dependencies=[Depends(require_api_key)])
-async def transcribe(file: UploadFile = File(...)) -> dict:
+async def transcribe(file: UploadFile = File(...), prompt: str = Form("")) -> dict:
     if not settings.GROQ_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -33,7 +33,7 @@ async def transcribe(file: UploadFile = File(...)) -> dict:
         )
 
     try:
-        text = stt.transcribe(file.filename or "audio.wav", audio)
+        text = stt.transcribe(file.filename or "audio.wav", audio, prompt=prompt)
     except Exception as exc:  # Groq/ağ hatası → 502 (ham hata sızdırılmaz)
         logger.exception("STT başarısız (dosya=%s)", file.filename)
         raise HTTPException(

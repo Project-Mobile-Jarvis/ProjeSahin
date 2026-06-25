@@ -70,12 +70,9 @@ class WakeWordService {
 
     final idx = _wakeIndex(text);
     if (idx < 0) return; // bu cümlede "şahin" yok → yok say
-    final after = text.substring(idx).replaceFirst(_wakeStrip, '').trim();
-    if (after.isNotEmpty) {
-      _onCommand?.call(after); // tek nefes: "şahin annemi ara" → Vosk metni (hızlı, daha az isabetli)
-    } else {
-      _onWake?.call(); // sadece "şahin" → main komutu Whisper ile kaydeder (isabetli)
-    }
+    // Her "şahin" → main komutu Whisper ile kaydeder (tek-nefes Vosk yolu kaldırıldı, isabet için).
+    // Trailing varsa yok sayılır; kullanıcı "Şahin" deyip DURAKLAMALI, sonra komutu söylemeli.
+    _onWake?.call();
   }
 
   int _wakeIndex(String text) {

@@ -17,10 +17,11 @@ class BackendClient {
     ),
   );
 
-  /// Ses dosyası → Türkçe metin (Groq Whisper).
-  Future<String> stt(String audioPath) async {
+  /// Ses dosyası → Türkçe metin (Groq Whisper). [prompt]: tanıma önyargısı (isimler+komutlar).
+  Future<String> stt(String audioPath, {String? prompt}) async {
     final form = FormData.fromMap({
       'file': await MultipartFile.fromFile(audioPath, filename: 'audio.m4a'),
+      if (prompt != null && prompt.trim().isNotEmpty) 'prompt': prompt,
     });
     final resp = await _dio.post('/stt', data: form);
     return (resp.data['text'] ?? '') as String;

@@ -26,9 +26,9 @@ class Recorder {
   /// Eller-serbest kayıt: başlatır, SESSİZLİK (VAD) ya da [maxDuration] dolunca otomatik durur.
   /// "Şahin" sonrası komutu butona basmadan kaydetmek için. Dosya yolunu döner.
   Future<String?> recordUntilSilence({
-    Duration maxDuration = const Duration(seconds: 8),
-    Duration silenceHold = const Duration(milliseconds: 1300),
-    double silenceDb = -38.0, // bunun altı "sessizlik" (dBFS)
+    Duration maxDuration = const Duration(seconds: 9),
+    Duration silenceHold = const Duration(milliseconds: 1500),
+    double silenceDb = -42.0, // bunun altı "sessizlik" (dBFS) — gevşek tutuldu (komutu kesmesin)
     Duration graceStart = const Duration(milliseconds: 900),
   }) async {
     await start();

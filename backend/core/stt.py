@@ -19,13 +19,22 @@ def _get_client() -> Groq:
     return _client
 
 
-def transcribe(filename: str, audio: bytes) -> str:
-    """Ses baytlarını Türkçe metne çevirir (Groq whisper-large-v3-turbo)."""
+def transcribe(filename: str, audio: bytes, prompt: str = "") -> str:
+    """Ses baytlarını Türkçe metne çevirir (Groq Whisper).
+
+    prompt: tanımayı yönlendiren önyargı metni (kişi adları + komut kelimeleri).
+    Whisper bunu bağlam olarak kullanır → 'Osman', 'Valide', 'peder' gibi isimleri/kelimeleri
+    doğru yazma olasılığı ciddi artar. temperature=0 → en olası (uydurmasız) çıktı.
+    """
     client = _get_client()
-    result = client.audio.transcriptions.create(
-        file=(filename, audio),
-        model=settings.GROQ_STT_MODEL,
-        language="tr",
-        response_format="json",
-    )
+    kwargs = {
+        "file": (filename, audio),
+        "model": settings.GROQ_STT_MODEL,
+        "language": "tr",
+        "temperature": 0,
+        "response_format": "json",
+    }
+    if prompt and prompt.strip():
+        kwargs["prompt"] = prompt.strip()[:900]  # Whisper prompt ~224 token; makul sınır
+    result = client.audio.transcriptions.create(**kwargs)
     return (result.text or "").strip()
