@@ -79,6 +79,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final ScrollController _scroll = ScrollController();
   _PendingWa? _pendingWa; // sesli onay bekleyen WhatsApp mesajı
   int _waAttempts = 0; // belirsiz onay yanıtı sayacı (sonsuz döngüyü önler)
+  bool _capturing = false; // wake sonrası Whisper kaydı sürüyor (tıklayınca erken bitir)
 
   @override
   void initState() {
@@ -116,6 +117,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _state == AssistantState.thinking || _state == AssistantState.speaking;
 
   Future<void> _onMicPressed() async {
+    if (_capturing) {
+      await _recorder.stopEarly(); // wake-capture'ı hemen bitir (kullanıcı sustuysa)
+      return;
+    }
     if (_busy) return;
     if (_state == AssistantState.recording) {
       await _processRecording();
@@ -160,7 +165,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ForegroundWakeService.resumeMic();
       return;
     }
-    _set(AssistantState.recording, 'Şahin dinliyor — söyle 🎤');
+    _set(AssistantState.recording, 'Şahin dinliyor — söyle (bitince bekle ya da bas) 🎤');
+    _capturing = true;
     try {
       final path = await _recorder.recordUntilSilence();
       if (path == null) {
@@ -179,6 +185,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       debugPrint('JARVIS capture hata: $e\n$st');
       _set(AssistantState.error, 'Hata: ${_short(e)}');
     } finally {
+      _capturing = false;
       ForegroundWakeService.resumeMic();
     }
   }

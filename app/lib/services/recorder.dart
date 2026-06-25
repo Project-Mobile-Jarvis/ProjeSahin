@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 /// Mikrofon kaydı (record paketi). m4a/AAC olarak kaydeder (Groq Whisper kabul eder).
 class Recorder {
   final AudioRecorder _rec = AudioRecorder();
+  Future<void> Function()? _vadDone; // aktif VAD kaydını dışarıdan erken bitirmek için
 
   Future<bool> hasPermission() => _rec.hasPermission();
 
@@ -23,18 +25,24 @@ class Recorder {
 
   Future<bool> isRecording() => _rec.isRecording();
 
-  /// Eller-serbest kayıt: başlatır, SESSİZLİK (VAD) ya da [maxDuration] dolunca otomatik durur.
-  /// "Şahin" sonrası komutu butona basmadan kaydetmek için. Dosya yolunu döner.
+  /// Aktif recordUntilSilence kaydını hemen bitirir (kullanıcı butona basınca).
+  Future<void> stopEarly() async => _vadDone?.call();
+
+  /// Eller-serbest kayıt: başlatır, kişi SUSUNCA (uyarlamalı VAD) ya da [maxDuration]
+  /// dolunca otomatik durur. Eşik sabit değil — konuşma ZİRVESİNİN belli bir alt sınırına
+  /// düşünce "sustu" sayar (cihaz/ortam ölçeğinden bağımsız çalışır). Dosya yolunu döner.
   Future<String?> recordUntilSilence({
-    Duration maxDuration = const Duration(seconds: 9),
-    Duration silenceHold = const Duration(milliseconds: 1500),
-    double silenceDb = -42.0, // bunun altı "sessizlik" (dBFS) — gevşek tutuldu (komutu kesmesin)
-    Duration graceStart = const Duration(milliseconds: 900),
+    Duration maxDuration = const Duration(seconds: 7),
+    Duration silenceHold = const Duration(milliseconds: 1200),
+    Duration graceStart = const Duration(milliseconds: 600),
+    double dropBelowPeak = 16.0, // konuşma zirvesinin bu kadar dB altı = sessizlik
   }) async {
     await start();
     final completer = Completer<String?>();
     final t0 = DateTime.now();
     DateTime? silenceSince;
+    double peak = -160.0;
+    bool heardSpeech = false;
     StreamSubscription<Amplitude>? sub;
     Timer? maxTimer;
 
@@ -42,21 +50,24 @@ class Recorder {
       if (completer.isCompleted) return;
       await sub?.cancel();
       maxTimer?.cancel();
+      _vadDone = null;
       completer.complete(await stop());
     }
 
+    _vadDone = done;
     maxTimer = Timer(maxDuration, done);
-    sub = _rec.onAmplitudeChanged(const Duration(milliseconds: 200)).listen((amp) {
-      // İlk anlar: kullanıcı konuşmaya başlasın diye sessizliği sayma.
-      if (DateTime.now().difference(t0) < graceStart) {
-        silenceSince = null;
-        return;
-      }
-      if (amp.current <= silenceDb) {
+    sub = _rec.onAmplitudeChanged(const Duration(milliseconds: 150)).listen((amp) {
+      final c = amp.current;
+      if (c > peak) peak = c;
+      if (c > -35) heardSpeech = true; // konuşma seviyesi görüldü
+      debugPrint('VAD amp=${c.toStringAsFixed(1)} peak=${peak.toStringAsFixed(1)} speech=$heardSpeech');
+      if (DateTime.now().difference(t0) < graceStart) return;
+      final isSilence = heardSpeech && c < (peak - dropBelowPeak);
+      if (isSilence) {
         silenceSince ??= DateTime.now();
         if (DateTime.now().difference(silenceSince!) >= silenceHold) done();
       } else {
-        silenceSince = null; // ses var → sessizlik sayacı sıfırla
+        silenceSince = null;
       }
     });
 
