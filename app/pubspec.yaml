@@ -34,7 +34,6 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  record: ^6.2.1
   dio: ^5.9.2
   audioplayers: ^6.7.1
   connectivity_plus: ^7.1.1
@@ -44,8 +43,8 @@ dependencies:
   url_launcher: ^6.3.2
   android_intent_plus: ^6.0.0
   flutter_contacts: ^2.1.0
-  vosk_flutter_2: ^1.0.5
-  flutter_foreground_task: ^9.1.0
+  shared_preferences: ^2.3.0
+  # Faz 11: wake word + komut kaydı NATIVE (MicAssistantService.kt) — Dart Vosk/record/FGS kaldırıldı.
 
 dev_dependencies:
   flutter_test:
@@ -68,9 +67,7 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
-
-  assets:
-    - assets/models/vosk-model-small-tr-0.3.zip
+  # Vosk modeli artık native assets'te (android/app/src/main/assets/model/) — Flutter asset değil.
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -67,10 +67,9 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- Faz 10: flutter_foreground_task — mikrofon tipli FGS (Vosk arka planda canlı kalsın).
-             Servis adı SABİT (plugin'in beklediği), değiştirme. -->
+        <!-- Faz 11: native mic servisi (Vosk wake + komut kaydı). Mic'in TEK sahibi. -->
         <service
-            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:name=".MicAssistantService"
             android:foregroundServiceType="microphone"
             android:exported="false" />
     </application>
