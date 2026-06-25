@@ -89,7 +89,7 @@ class WakeTaskHandler extends TaskHandler {
   void onRepeatEvent(DateTime timestamp) {
     if (_micBusy) {
       // 12 sn'den uzun "meşgul" → resume kaybolmuş say, toparla. Değilse komut sürüyor olabilir.
-      if (_pauseAt != null && DateTime.now().difference(_pauseAt!).inSeconds > 12) {
+      if (_pauseAt != null && DateTime.now().difference(_pauseAt!).inSeconds > 6) {
         _micBusy = false;
       } else {
         return;
@@ -128,7 +128,7 @@ class ForegroundWakeService {
       ),
       iosNotificationOptions: const IOSNotificationOptions(),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(15000), // watchdog tetiği (Vosk takılırsa toparla)
+        eventAction: ForegroundTaskEventAction.repeat(4000), // watchdog tetiği (~4sn'de Vosk'u toparla)
         autoRunOnBoot: false,
         autoRunOnMyPackageReplaced: true,
         allowWakeLock: true,
