@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // HapticFeedback
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -96,7 +97,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     try {
       await ForegroundWakeService.startIfPermitted();
       await ForegroundWakeService.ensureOverlayPermission();
-      ForegroundWakeService.setKeyterms(await _actions.sttKeyterms()); // Deepgram boost (isimler)
     } catch (e) {
       debugPrint('JARVIS foreground servis hata: $e');
     }
@@ -160,8 +160,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// Sessizlikte otomatik durur (VAD).
   Future<void> _captureCommand() async {
     if (_busy || _state == AssistantState.recording) return;
+    HapticFeedback.mediumImpact(); // "dinliyorum" hissi (ana isolate'ta çalışır)
     ForegroundWakeService.pauseMic(); // servis Vosk mic'i bıraksın
-    await Future.delayed(const Duration(milliseconds: 300));
+    await Future.delayed(const Duration(milliseconds: 150));
     if (!await _recorder.hasPermission()) {
       ForegroundWakeService.resumeMic();
       return;
@@ -193,10 +194,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _actions.sttKeyterms().then(ForegroundWakeService.setKeyterms); // servis boost'u tazele
-      _consumePending();
-    }
+    if (state == AppLifecycleState.resumed) _consumePending();
   }
 
   Future<void> _startRecording() async {
