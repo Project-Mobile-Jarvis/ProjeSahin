@@ -10,13 +10,21 @@ Tam spec: SPEC.md (her zaman ona başvur).
 - [x] Faz 1 — Backend beyin: /chat + Gemini function calling + DB hafıza
       → **Railway'de CANLI:** https://projesahin-production.up.railway.app (root dir=backend, port 8080)
       → Repo: github.com/Project-Mobile-Jarvis/ProjeSahin (main, auto-deploy)
-- [x] Faz 2 — /stt (Groq Whisper, whisper-large-v3-turbo, language=tr) — Railway'de CANLI (ses→metin→/chat e2e doğrulandı)
+- [x] Faz 2 — /stt (Groq Whisper, whisper-large-v3, language=tr) — Railway'de CANLI (ses→metin→/chat e2e doğrulandı)
 - [x] Faz 3 — /tts (Google Chirp 3 HD, varsayılan ses tr-TR-Chirp3-HD-Achird) — Railway'de CANLI (metin→mp3 doğrulandı)
 - [x] Faz 4 — Agentic döngü + tool'lar: search_places (Places API New), navigate_to,
       save/get_saved_location, save/get_preference, grounding. YEREL tam doğrulandı
       ("Bodrum restoran öner" gerçek mekanlar+puan; "eve götür"→navigate_to; hafıza).
       Railway'e GOOGLE_PLACES_API_KEY eklenmeli (prod search_places için).
-- [ ] Faz 5–9 — Flutter app   [ ] Faz 10 — Proaktif (opsiyonel)
+- [x] Faz 5 — Flutter ses döngüsü + kayan sohbet ekranı — cihazda CANLI
+- [x] Faz 6 — GPS + aksiyon dispatcher (navigate_to, make_call direkt arama, set_alarm, open_app) — cihazda CANLI
+- [x] Faz 7 — WhatsApp otomatik gönder (AccessibilityService + sesli onay, çok-stratejili gönder butonu) — cihazda CANLI (mesaj gitti)
+- [x] Faz 9 — Wake word "Şahin" (Vosk tr-0.3, tek-nefes + iki-aşama) — cihazda CANLI
+- [x] Faz 10 (arka plan wake) — mikrofon tipli foreground servis (flutter_foreground_task); Vosk
+      SERVİS isolate'ında çalışır → uygulama kapalı/swipe'lı bile olsa "Şahin annemi ara" çalışır.
+      Cihazda DOĞRULANDI. İzinler adb reçetesiyle (bkz memory). Reboot sonrası app bir kez açılmalı.
+- [ ] Faz 8 — Offline mod (Vosk STT + Piper TTS) — YAPILMADI   [ ] Proaktif (opsiyonel)
+- ⚠️ Maliyet: web_search terminal + düşünmesiz (ucuz). Gemini PAID tier (kart 10TL limitli).
 
 ## Tech Stack
 - Backend: FastAPI + Uvicorn, Python 3.13. Deploy: Railway. DB: Railway PostgreSQL (SQLAlchemy 2.0 + Alembic).
