@@ -18,11 +18,11 @@ router = APIRouter()
 
 
 @router.post("/stt", dependencies=[Depends(require_api_key)])
-async def transcribe(file: UploadFile = File(...), prompt: str = Form("")) -> dict:
-    if not settings.GROQ_API_KEY:
+async def transcribe(file: UploadFile = File(...), keyterms: str = Form("")) -> dict:
+    if not settings.DEEPGRAM_API_KEY and not settings.GROQ_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="GROQ_API_KEY ayarlı değil.",
+            detail="STT sağlayıcı ayarlı değil (DEEPGRAM_API_KEY veya GROQ_API_KEY).",
         )
 
     audio = await file.read()
@@ -33,7 +33,7 @@ async def transcribe(file: UploadFile = File(...), prompt: str = Form("")) -> di
         )
 
     try:
-        text = stt.transcribe(file.filename or "audio.wav", audio, prompt=prompt)
+        text = stt.transcribe(file.filename or "audio.m4a", audio, keyterms_csv=keyterms)
     except Exception as exc:  # Groq/ağ hatası → 502 (ham hata sızdırılmaz)
         logger.exception("STT başarısız (dosya=%s)", file.filename)
         raise HTTPException(

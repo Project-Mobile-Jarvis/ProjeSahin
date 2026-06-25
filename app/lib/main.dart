@@ -174,7 +174,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         return;
       }
       _set(AssistantState.thinking, 'Yazıya çeviriyorum…');
-      final text = await _backend.stt(path, prompt: await _actions.sttBiasPrompt());
+      final text = await _backend.stt(path, keyterms: await _actions.sttKeyterms());
       debugPrint('JARVIS STT(capture): "$text"');
       if (text.trim().isEmpty) {
         _set(AssistantState.idle, 'Bir şey duyamadım, tekrar dene');
@@ -219,7 +219,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     try {
       _set(AssistantState.thinking, 'Yazıya çeviriyorum…');
-      final text = await _backend.stt(path, prompt: await _actions.sttBiasPrompt());
+      final text = await _backend.stt(path, keyterms: await _actions.sttKeyterms());
       debugPrint('JARVIS STT(button): "$text"');
       if (text.trim().isEmpty) {
         _set(AssistantState.idle, 'Bir şey duyamadım, tekrar dene');

@@ -28,7 +28,12 @@ class Settings(BaseSettings):
     # --- Backend güvenliği (SPEC 7.3) ---
     API_SHARED_SECRET: str = _DEFAULT_SECRET
 
-    # --- Groq STT (Faz 2) ---
+    # --- Deepgram STT (Nova-3) — BİRİNCİL. Ayarlıysa Whisper yerine kullanılır.
+    # keyterm boost ile isim isabeti (Osman/Valide) Whisper'dan iyi. Hata olursa Whisper'a düşer.
+    DEEPGRAM_API_KEY: str = ""
+    DEEPGRAM_MODEL: str = "nova-3"
+
+    # --- Groq STT (Faz 2) — Deepgram yoksa/başarısızsa yedek ---
     GROQ_API_KEY: str = ""
     GROQ_STT_MODEL: str = "whisper-large-v3"  # turbo'dan daha doğru (az daha yavaş)
 

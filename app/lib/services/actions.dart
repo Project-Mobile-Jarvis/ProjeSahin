@@ -7,16 +7,18 @@ import 'package:url_launcher/url_launcher.dart';
 /// Backend'den gelen aksiyon JSON'unu telefonda uygular (SPEC Faz 6).
 /// Cihaz tool'ları: navigate_to, make_call, set_alarm, open_app.
 class DeviceActions {
-  String? _biasPrompt;
+  String? _keyterms;
 
-  /// Whisper'a verilecek tanıma önyargısı: komut kelimeleri + rehberdeki isimler.
-  /// "Osman", "Valide", "peder" gibi isimleri doğru yazması için. Bir kez kurulur (cache).
-  Future<String> sttBiasPrompt() async {
-    if (_biasPrompt != null) return _biasPrompt!;
-    const vocab = 'Türkçe sesli komut. Komutlar: ara, telefon et, mesaj gönder, '
-        'WhatsApp yaz, alarm kur, navigasyon başlat, eve götür, en yakın, hava durumu. '
-        'Akrabalar: anne, baba, peder, valide, kardeş, abi, abla, eş, dede, anneanne. Kişiler: ';
-    final names = <String>{};
+  /// STT boost terimleri (Deepgram keyterm / Whisper prompt): komut kelimeleri + rehber isimleri.
+  /// "Osman", "Valide" gibi isimlerin doğru yazılması için. Virgüllü liste. Bir kez kurulur (cache).
+  Future<String> sttKeyterms() async {
+    if (_keyterms != null) return _keyterms!;
+    final terms = <String>{
+      'ara', 'telefon', 'mesaj', 'gönder', 'yaz', 'WhatsApp', 'alarm', 'kur',
+      'navigasyon', 'başlat', 'götür', 'eve', 'en yakın', 'hava durumu',
+      'anne', 'baba', 'peder', 'valide', 'kardeş', 'abi', 'abla', 'eş',
+      'dede', 'anneanne', 'teyze', 'hala', 'amca', 'dayı',
+    };
     try {
       final status = await Permission.contacts.request();
       if (status.isGranted) {
@@ -26,13 +28,13 @@ class DeviceActions {
           final dn = (c.displayName ?? '').trim();
           if (dn.isEmpty) continue;
           final first = dn.split(RegExp(r'\s+')).first;
-          if (first.length >= 2) names.add(first);
-          if (names.length >= 40) break;
+          if (first.length >= 2) terms.add(first);
+          if (terms.length >= 90) break;
         }
       }
     } catch (_) {}
-    _biasPrompt = '$vocab${names.join(', ')}.';
-    return _biasPrompt!;
+    _keyterms = terms.join(',');
+    return _keyterms!;
   }
 
   /// Aksiyonu uygular. Cihaz aksiyonu yoksa (chat_reply vb.) sessizce geçer.
