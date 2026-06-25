@@ -96,6 +96,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     try {
       await ForegroundWakeService.startIfPermitted();
       await ForegroundWakeService.ensureOverlayPermission();
+      ForegroundWakeService.setKeyterms(await _actions.sttKeyterms()); // Deepgram boost (isimler)
     } catch (e) {
       debugPrint('JARVIS foreground servis hata: $e');
     }
@@ -192,7 +193,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _consumePending();
+    if (state == AppLifecycleState.resumed) {
+      _actions.sttKeyterms().then(ForegroundWakeService.setKeyterms); // servis boost'u tazele
+      _consumePending();
+    }
   }
 
   Future<void> _startRecording() async {

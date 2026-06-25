@@ -1,19 +1,18 @@
 import 'dart:ui';
 
+import 'package:flutter/services.dart'; // HapticFeedback
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+import 'backend.dart';
+import 'recorder.dart';
 import 'wakeword.dart';
 
 /// Faz 10 — Arka plan wake word. Vosk dinleme SERVİSİN KENDİ isolate'ında çalışır
-/// (TaskHandler), böylece uygulama swipe'lansa/kapatılsa bile dinleme sürer.
+/// (uygulama swipe'lansa/kapatılsa bile sürer).
 ///
-/// Komut/wake olunca:
-///  - uygulama ön plandaysa → sendDataToMain ile mevcut _handleText akışına ver,
-///  - arka planda/kapalıysa → komutu kalıcı kaydet (pending_command) + ekranı uyandır + app'i aç;
-///    app açılınca bekleyen komutu işler.
-///
-/// KISIT: servis yalnızca uygulama ÖN PLANDAYKEN başlar (Android 14+ mic kuralı).
-/// Reboot sonrası app bir kez açılmalı.
+/// HIZ: "Şahin" duyulur duyulmaz komut HEMEN serviste kaydedilir (app açılmasını beklemeden),
+/// Deepgram'a yollanır, SONUÇ (metin) main'e verilir → app sadece göstermek/aksiyon için açılır.
+/// Servis-içi kayıt çalışmazsa (isolate plugin sorunu) eski yola düşer: 'capture' sinyali → main kaydeder.
 
 @pragma('vm:entry-point')
 void wakeServiceCallback() {
@@ -22,6 +21,10 @@ void wakeServiceCallback() {
 
 class WakeTaskHandler extends TaskHandler {
   WakeWordService? _wake;
+  final Recorder _recorder = Recorder();
+  final BackendClient _backend = BackendClient();
+  String _keyterms = '';
+  bool _capturing = false;
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -33,7 +36,6 @@ class WakeTaskHandler extends TaskHandler {
       await wake.start();
       _wake = wake;
     } catch (e) {
-      // Vosk bu isolate'ta çalışmazsa burada patlar — cihaz testinde görülür.
       FlutterForegroundTask.updateService(
         notificationTitle: 'Şahin',
         notificationText: 'Dinleme başlatılamadı (servis)',
@@ -41,22 +43,63 @@ class WakeTaskHandler extends TaskHandler {
     }
   }
 
-  /// Sadece "Şahin" duyuldu → komutu Whisper ile kaydetmesi için main'i tetikle (isabetli).
+  /// "Şahin" duyuldu → komutu HEMEN serviste kaydet → Deepgram → main'e ver.
+  /// (App açılmasını beklemez; bu yüzden hızlı.)
   Future<void> _onWake() async {
+    if (_capturing) return;
+    _capturing = true;
+    try {
+      HapticFeedback.mediumImpact(); // "dinliyorum" hissi (cep/ekran kapalı için)
+    } catch (_) {}
+    await _wake?.stop(); // Vosk mic'i kayda bıraksın
+
+    String text = '';
+    var serviceRecordWorks = true;
+    try {
+      final path = await _recorder.recordUntilSilence();
+      if (path != null) {
+        text = await _backend.stt(path, keyterms: _keyterms);
+      }
+    } catch (_) {
+      serviceRecordWorks = false; // isolate'ta record/path_provider çalışmadı → fallback
+    }
+
+    _capturing = false;
+    await _wake?.start(); // wake'i geri aç (sıradaki "Şahin" için)
+
+    if (!serviceRecordWorks) {
+      await _signalCaptureFallback(); // eski yol: main kaydetsin
+      return;
+    }
+    if (text.trim().isNotEmpty) {
+      await _deliver({'cmd': text});
+    }
+    // text boşsa kullanıcı bir şey demedi → sadece bekle (yeni "Şahin"e hazır).
+  }
+
+  /// (WhatsApp onayı) armForCommand sonrası kısa Vosk yanıtı ("evet/iptal") → main.
+  Future<void> _onCommand(String command) async {
+    await _deliver({'cmd': command});
+  }
+
+  /// Sonucu main'e iletir: ön plandaysa direkt, değilse kaydet + app'i öne getir.
+  Future<void> _deliver(Map<String, Object> data) async {
     if (await FlutterForegroundTask.isAppOnForeground) {
-      FlutterForegroundTask.sendDataToMain({'capture': true});
+      FlutterForegroundTask.sendDataToMain(data);
     } else {
-      await FlutterForegroundTask.saveData(key: 'pending_capture', value: true);
+      if (data['cmd'] is String) {
+        await FlutterForegroundTask.saveData(key: 'pending_command', value: data['cmd'] as String);
+      }
       await _bringUp();
     }
   }
 
-  /// Komut hazır → ön plandaysa UI'a ver, değilse kaydet + app'i aç.
-  Future<void> _onCommand(String command) async {
+  /// Servis kaydı çalışmazsa: main'in kaydetmesini iste (eski davranış).
+  Future<void> _signalCaptureFallback() async {
     if (await FlutterForegroundTask.isAppOnForeground) {
-      FlutterForegroundTask.sendDataToMain({'cmd': command});
+      FlutterForegroundTask.sendDataToMain({'capture': true});
     } else {
-      await FlutterForegroundTask.saveData(key: 'pending_command', value: command);
+      await FlutterForegroundTask.saveData(key: 'pending_capture', value: true);
       await _bringUp();
     }
   }
@@ -68,9 +111,13 @@ class WakeTaskHandler extends TaskHandler {
     FlutterForegroundTask.launchApp();
   }
 
-  /// UI'dan gelen mic kontrol mesajları (TTS/işleme/buton kaydı sırasında çakışma önleme).
   @override
   void onReceiveData(Object data) {
+    if (data is Map) {
+      final kt = data['keyterms'];
+      if (kt is String) _keyterms = kt; // main'den boost terimleri
+      return;
+    }
     if (data is! String) return;
     switch (data) {
       case 'pause':
@@ -95,11 +142,8 @@ class WakeTaskHandler extends TaskHandler {
 }
 
 class ForegroundWakeService {
-  /// main() içinde, runApp'tan önce.
   static void initPort() => FlutterForegroundTask.initCommunicationPort();
 
-  /// İzinleri ister + mikrofon tipli FGS'yi başlatır (servis Vosk'u dinlemeye başlar).
-  /// SADECE uygulama önplandayken çağır.
   static Future<void> startIfPermitted() async {
     if (await FlutterForegroundTask.checkNotificationPermission() !=
         NotificationPermission.granted) {
@@ -119,7 +163,7 @@ class ForegroundWakeService {
       iosNotificationOptions: const IOSNotificationOptions(),
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.nothing(),
-        autoRunOnBoot: false, // Android 14+ mic FGS BOOT'tan başlatılamaz
+        autoRunOnBoot: false,
         autoRunOnMyPackageReplaced: true,
         allowWakeLock: true,
         allowWifiLock: false,
@@ -136,19 +180,20 @@ class ForegroundWakeService {
     );
   }
 
-  /// launchApp için "diğer uygulamaların üzerinde göster" izni gerekir; yoksa ayarları açar.
   static Future<bool> ensureOverlayPermission() async {
     if (await FlutterForegroundTask.canDrawOverlays) return true;
     await FlutterForegroundTask.openSystemAlertWindowSettings();
     return FlutterForegroundTask.canDrawOverlays;
   }
 
-  // Ana isolate → servis Vosk kontrolü (mesaj köprüsü).
+  /// Servisin Deepgram için kullanacağı boost terimleri (isimler+komutlar). main'den gönderilir.
+  static void setKeyterms(String csv) =>
+      FlutterForegroundTask.sendDataToTask({'keyterms': csv});
+
   static void pauseMic() => FlutterForegroundTask.sendDataToTask('pause');
   static void resumeMic() => FlutterForegroundTask.sendDataToTask('resume');
   static void armForCommand() => FlutterForegroundTask.sendDataToTask('arm');
 
-  /// Arka plandan açılınca bekleyen komutu çek (ve sil). Yoksa null.
   static Future<String?> takePendingCommand() async {
     final cmd = await FlutterForegroundTask.getData<String>(key: 'pending_command');
     if (cmd != null && cmd.trim().isNotEmpty) {
@@ -158,7 +203,6 @@ class ForegroundWakeService {
     return null;
   }
 
-  /// Arka planda "Şahin" duyulup açıldıysak: komutu Whisper ile kaydetmemiz gerekiyor mu?
   static Future<bool> takePendingCapture() async {
     final v = await FlutterForegroundTask.getData<bool>(key: 'pending_capture');
     if (v == true) {
