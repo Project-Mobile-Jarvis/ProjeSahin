@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'config.dart';
@@ -8,7 +9,6 @@ import 'services/location.dart';
 import 'services/player.dart';
 import 'services/recorder.dart';
 import 'services/foreground.dart';
-import 'services/wakeword.dart';
 import 'services/whatsapp.dart';
 
 void main() {
@@ -65,13 +65,12 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final Recorder _recorder = Recorder();
   final TtsPlayer _player = TtsPlayer();
   final BackendClient _backend = BackendClient();
   final LocationService _location = LocationService();
   final DeviceActions _actions = DeviceActions();
-  final WakeWordService _wake = WakeWordService();
   final WhatsAppService _wa = WhatsAppService();
 
   AssistantState _state = AssistantState.idle;
@@ -79,30 +78,34 @@ class _HomePageState extends State<HomePage> {
   final List<_ChatMsg> _messages = [];
   final ScrollController _scroll = ScrollController();
   _PendingWa? _pendingWa; // sesli onay bekleyen WhatsApp mesajı
-  bool _armNextListen = false; // sonraki dinleme "Şahin"siz komut beklesin (sesli onay için)
   int _waAttempts = 0; // belirsiz onay yanıtı sayacı (sonsuz döngüyü önler)
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    FlutterForegroundTask.addTaskDataCallback(_onServiceData); // servis → UI komut köprüsü
     _location.start(); // GPS izni + konum akışını ısıt
     _bootstrap();
   }
 
   Future<void> _bootstrap() async {
     await Permission.microphone.request();
-    await _initWake();
-    // Faz 10: arka plan dinleme — mikrofon tipli foreground servis (süreç canlı kalsın).
+    // Faz 10: dinleme SERVİS isolate'ında — mikrofon tipli FGS başlat (swipe'tan sağ çıkar).
     try {
       await ForegroundWakeService.startIfPermitted();
       await ForegroundWakeService.ensureOverlayPermission();
     } catch (e) {
       debugPrint('JARVIS foreground servis hata: $e');
     }
+    await _consumePending(); // launchApp ile açıldıysak bekleyen komutu işle
+    _set(AssistantState.idle, 'Hazır — "Şahin" de ya da bas 🎤');
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    FlutterForegroundTask.removeTaskDataCallback(_onServiceData);
     _recorder.dispose();
     _player.dispose();
     _scroll.dispose();
@@ -121,53 +124,34 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _initWake() async {
-    try {
-      _set(_state, 'Şahin hazırlanıyor…');
-      await _wake.init();
-      _wake.listen(onCommand: _onWakeCommand, onWake: _onWakeListening);
-      await _wake.start();
-      _set(AssistantState.idle, 'Hazır — "Şahin" de ya da bas 🎤');
-    } catch (e) {
-      debugPrint('JARVIS wake init hata: $e');
-      _set(AssistantState.idle, 'Hazır — konuşmak için bas');
+  /// Servis isolate'ından (arka plan Vosk) ön plandayken gelen komut.
+  void _onServiceData(Object data) {
+    if (_busy || _state == AssistantState.recording) return;
+    if (data is Map && data['cmd'] is String) {
+      _handleText(data['cmd'] as String);
     }
   }
 
-  /// Sadece "şahin" duyuldu → komut bekleniyor. Vosk dinlemeye DEVAM eder (durdurma yok);
-  /// sıradaki cümle (sustuğunda otomatik biter) komut olarak gelecek.
-  void _onWakeListening() {
+  /// Arka plandan/kapalıdan açıldıysak servisin kaydettiği bekleyen komutu işle.
+  Future<void> _consumePending() async {
     if (_busy || _state == AssistantState.recording) return;
-    // "Şahin" duyulur duyulmaz sohbet ekranını öne getir → kullanıcı dinlendiğini görür.
-    ForegroundWakeService.bringToFrontIfBackground();
-    _set(AssistantState.idle, 'Şahin dinliyor — komutunu söyle 🎤');
+    final cmd = await ForegroundWakeService.takePendingCommand();
+    if (cmd != null && mounted) await _handleText(cmd);
   }
 
-  /// Komut hazır (tek nefes "şahin X" ya da "şahin" sonrası ayrı cümle) → işle.
-  Future<void> _onWakeCommand(String command) async {
-    if (_busy || _state == AssistantState.recording) return;
-    await ForegroundWakeService.bringToFrontIfBackground(); // arka plandaysa öne getir
-    await _wake.stop(); // işleme + TTS sırasında kapat (self-trigger yok)
-    await _handleText(command);
-    await _restartWake();
-  }
-
-  /// Wake'i geri açar; bir onay bekleniyorsa "Şahin"siz doğrudan komut dinlemeye geçer.
-  Future<void> _restartWake() async {
-    await _wake.start();
-    if (_armNextListen) {
-      _armNextListen = false;
-      _wake.armForCommand();
-    }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _consumePending();
   }
 
   Future<void> _startRecording() async {
-    await _wake.stop(); // buton kaydı sırasında Vosk mic'i bıraksın
+    ForegroundWakeService.pauseMic(); // servis Vosk mic'i bıraksın (buton kaydı için)
+    await Future.delayed(const Duration(milliseconds: 350)); // mic serbest kalsın
     if (!await _recorder.hasPermission()) {
       await Permission.microphone.request();
       if (!await _recorder.hasPermission()) {
         _set(AssistantState.error, 'Mikrofon izni gerekli');
-        await _wake.start();
+        ForegroundWakeService.resumeMic();
         return;
       }
     }
@@ -179,7 +163,7 @@ class _HomePageState extends State<HomePage> {
     final path = await _recorder.stop();
     if (path == null) {
       _set(AssistantState.error, 'Kayıt alınamadı');
-      await _restartWake();
+      ForegroundWakeService.resumeMic();
       return;
     }
     try {
@@ -189,22 +173,23 @@ class _HomePageState extends State<HomePage> {
         _set(AssistantState.idle, 'Bir şey duyamadım, tekrar dene');
         return;
       }
-      await _handleText(text);
+      await _handleText(text); // mic'i kendisi yönetir (pause/resume)
     } catch (e, st) {
       debugPrint('JARVIS hata: $e\n$st');
       _set(AssistantState.error, 'Hata: ${_short(e)}');
     } finally {
-      await _restartWake(); // buton akışı bitince wake'i geri aç (onay varsa komuta arm)
+      ForegroundWakeService.resumeMic(); // her durumda servis Vosk geri (idempotent)
     }
   }
 
   /// Metni (buton STT'sinden veya wake word'den) işler: /chat → sesli cevap → cihaz aksiyonu.
   Future<void> _handleText(String text) async {
-    // WhatsApp onayı bekleniyorsa bu sözü onay/iptal olarak değerlendir.
-    if (_pendingWa != null && await _handleWaConfirmation(text)) return;
-
-    _addMsg('Sen', text, user: true);
+    ForegroundWakeService.pauseMic(); // işleme + TTS sırasında servis Vosk sussun (self-trigger yok)
     try {
+      // WhatsApp onayı bekleniyorsa bu sözü onay/iptal olarak değerlendir.
+      if (_pendingWa != null && await _handleWaConfirmation(text)) return;
+
+      _addMsg('Sen', text, user: true);
       _set(AssistantState.thinking, 'Düşünüyorum…');
       final pos = _location.last;
       final result =
@@ -231,6 +216,10 @@ class _HomePageState extends State<HomePage> {
       debugPrint('JARVIS hata: $e\n$st');
       _addMsg('Şahin', 'Hata: ${_short(e)}', user: false, error: true);
       _set(AssistantState.error, 'Hata: ${_short(e)}');
+    } finally {
+      // Onay bekleniyorsa "Şahin"siz komut dinle; her hâlükârda servis Vosk'u geri aç.
+      if (_pendingWa != null) ForegroundWakeService.armForCommand();
+      ForegroundWakeService.resumeMic();
     }
   }
 
@@ -282,7 +271,7 @@ class _HomePageState extends State<HomePage> {
 
     _pendingWa = _PendingWa(phone, message, target);
     _waAttempts = 0;
-    _armNextListen = true; // mic otomatik açılsın; "Şahin" demeden onay söylenebilsin
+    // (_handleText finally'si _pendingWa varsa servisi "Şahin"siz komut beklemeye arm eder.)
     // Onay cümlesini UYGULAMA üretir ve seslendirir (her zaman okunsun diye).
     final confirm = includeLoc
         ? '$target\'a "$spokenText" yazıp konumu da ekliyorum. Göndereyim mi?'
@@ -344,7 +333,7 @@ class _HomePageState extends State<HomePage> {
     _addMsg('Sen', text, user: true);
     _waAttempts++;
     if (_waAttempts < 2) {
-      _armNextListen = true; // mic'i tekrar aç
+      // (_pendingWa duruyor → _handleText finally'si tekrar arm eder.)
       const msg = 'Anlayamadım — göndereyim mi? "gönder" ya da "iptal" de.';
       _addMsg('Şahin', msg, user: false);
       _set(AssistantState.speaking, 'Cevaplıyorum…');

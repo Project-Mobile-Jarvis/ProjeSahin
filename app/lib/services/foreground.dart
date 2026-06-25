@@ -1,40 +1,103 @@
+import 'dart:ui';
+
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
-/// Faz 10 — Arka plan wake word. Mikrofon tipli foreground servis SÜRECİ canlı tutar;
-/// Vosk dinleme ANA isolate'ta sürdüğü için uygulama arka planda/ekran kapalıyken de
-/// "Şahin" duyulmaya devam eder. (Vosk zaten native dinliyor; arka plan isolate'ı kırılgan
-/// olduğundan ondan kaçınıldı — servis yalnızca process önceliğini yükseltir + kalıcı bildirim.)
+import 'wakeword.dart';
+
+/// Faz 10 — Arka plan wake word. Vosk dinleme SERVİSİN KENDİ isolate'ında çalışır
+/// (TaskHandler), böylece uygulama swipe'lansa/kapatılsa bile dinleme sürer.
 ///
-/// KISIT: servis yalnızca uygulama ÖN PLANDAYKEN başlatılabilir (Android 14+ mic kuralı).
-/// Reboot sonrası uygulama bir kez açılmalı.
+/// Komut/wake olunca:
+///  - uygulama ön plandaysa → sendDataToMain ile mevcut _handleText akışına ver,
+///  - arka planda/kapalıysa → komutu kalıcı kaydet (pending_command) + ekranı uyandır + app'i aç;
+///    app açılınca bekleyen komutu işler.
+///
+/// KISIT: servis yalnızca uygulama ÖN PLANDAYKEN başlar (Android 14+ mic kuralı).
+/// Reboot sonrası app bir kez açılmalı.
 
 @pragma('vm:entry-point')
 void wakeServiceCallback() {
-  FlutterForegroundTask.setTaskHandler(_KeepAliveHandler());
+  FlutterForegroundTask.setTaskHandler(WakeTaskHandler());
 }
 
-/// Servis sadece process'i canlı tutar; iş mantığı (Vosk) ana isolate'ta.
-class _KeepAliveHandler extends TaskHandler {
+class WakeTaskHandler extends TaskHandler {
+  WakeWordService? _wake;
+
   @override
-  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {}
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    DartPluginRegistrant.ensureInitialized(); // bu isolate'ta plugin kanallarını kaydet
+    try {
+      final wake = WakeWordService();
+      await wake.init();
+      wake.listen(onCommand: _onCommand, onWake: _onWake);
+      await wake.start();
+      _wake = wake;
+    } catch (e) {
+      // Vosk bu isolate'ta çalışmazsa burada patlar — cihaz testinde görülür.
+      FlutterForegroundTask.updateService(
+        notificationTitle: 'Şahin',
+        notificationText: 'Dinleme başlatılamadı (servis)',
+      );
+    }
+  }
+
+  /// Sadece "Şahin" duyuldu → ekranı aç (kullanıcı dinlendiğini görsün).
+  Future<void> _onWake() async => _bringUp();
+
+  /// Komut hazır → ön plandaysa UI'a ver, değilse kaydet + app'i aç.
+  Future<void> _onCommand(String command) async {
+    if (await FlutterForegroundTask.isAppOnForeground) {
+      FlutterForegroundTask.sendDataToMain({'cmd': command});
+    } else {
+      await FlutterForegroundTask.saveData(key: 'pending_command', value: command);
+      await _bringUp();
+    }
+  }
+
+  Future<void> _bringUp() async {
+    if (await FlutterForegroundTask.isAppOnForeground) return;
+    FlutterForegroundTask.wakeUpScreen();
+    FlutterForegroundTask.setOnLockScreenVisibility(true);
+    FlutterForegroundTask.launchApp();
+  }
+
+  /// UI'dan gelen mic kontrol mesajları (TTS/işleme/buton kaydı sırasında çakışma önleme).
+  @override
+  void onReceiveData(Object data) {
+    if (data is! String) return;
+    switch (data) {
+      case 'pause':
+        _wake?.stop();
+        break;
+      case 'resume':
+        _wake?.start();
+        break;
+      case 'arm':
+        _wake?.armForCommand();
+        break;
+    }
+  }
+
   @override
   void onRepeatEvent(DateTime timestamp) {}
+
   @override
-  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {}
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
+    await _wake?.stop();
+  }
 }
 
 class ForegroundWakeService {
-  /// main() içinde, runApp'tan önce çağrılır.
+  /// main() içinde, runApp'tan önce.
   static void initPort() => FlutterForegroundTask.initCommunicationPort();
 
-  /// İzinleri ister + mikrofon tipli FGS'yi başlatır. SADECE uygulama önplandayken çağır.
+  /// İzinleri ister + mikrofon tipli FGS'yi başlatır (servis Vosk'u dinlemeye başlar).
+  /// SADECE uygulama önplandayken çağır.
   static Future<void> startIfPermitted() async {
-    // Kalıcı bildirim izni (Android 13+).
     if (await FlutterForegroundTask.checkNotificationPermission() !=
         NotificationPermission.granted) {
       await FlutterForegroundTask.requestNotificationPermission();
     }
-    // Pil optimizasyonu muafiyeti (Samsung/OEM servisi öldürmesin).
     if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
       await FlutterForegroundTask.requestIgnoreBatteryOptimization();
     }
@@ -48,8 +111,9 @@ class ForegroundWakeService {
       ),
       iosNotificationOptions: const IOSNotificationOptions(),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.nothing(), // periyodik tetik yok; Vosk stream sürer
+        eventAction: ForegroundTaskEventAction.nothing(),
         autoRunOnBoot: false, // Android 14+ mic FGS BOOT'tan başlatılamaz
+        autoRunOnMyPackageReplaced: true,
         allowWakeLock: true,
         allowWifiLock: false,
       ),
@@ -65,19 +129,26 @@ class ForegroundWakeService {
     );
   }
 
-  /// Arka plandaysa ekranı uyandırıp uygulamayı öne getirir (overlay izni gerekir).
-  static Future<void> bringToFrontIfBackground() async {
-    if (await FlutterForegroundTask.isAppOnForeground) return;
-    FlutterForegroundTask.wakeUpScreen();
-    FlutterForegroundTask.setOnLockScreenVisibility(true);
-    FlutterForegroundTask.launchApp();
-  }
-
   /// launchApp için "diğer uygulamaların üzerinde göster" izni gerekir; yoksa ayarları açar.
   static Future<bool> ensureOverlayPermission() async {
     if (await FlutterForegroundTask.canDrawOverlays) return true;
     await FlutterForegroundTask.openSystemAlertWindowSettings();
     return FlutterForegroundTask.canDrawOverlays;
+  }
+
+  // Ana isolate → servis Vosk kontrolü (mesaj köprüsü).
+  static void pauseMic() => FlutterForegroundTask.sendDataToTask('pause');
+  static void resumeMic() => FlutterForegroundTask.sendDataToTask('resume');
+  static void armForCommand() => FlutterForegroundTask.sendDataToTask('arm');
+
+  /// Arka plandan açılınca bekleyen komutu çek (ve sil). Yoksa null.
+  static Future<String?> takePendingCommand() async {
+    final cmd = await FlutterForegroundTask.getData<String>(key: 'pending_command');
+    if (cmd != null && cmd.trim().isNotEmpty) {
+      await FlutterForegroundTask.removeData(key: 'pending_command');
+      return cmd;
+    }
+    return null;
   }
 
   static Future<void> stop() => FlutterForegroundTask.stopService();
