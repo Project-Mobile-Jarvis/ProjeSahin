@@ -47,12 +47,15 @@ class Settings(BaseSettings):
 
     # --- Gemini (Faz 1) ---
     GEMINI_API_KEY: str = ""
-    # Birincil model. "gemini-flash-latest" Google'ın güncel en iyi flash'ini takip eden
-    # stabil alias — hız/performans dengesi en iyi, sürüm çıktıkça otomatik güncellenir.
-    GEMINI_MODEL: str = "gemini-flash-latest"
+    # KADEMELİ MODEL (token tasarrufu): basit komut/sohbet → ucuz Lite; sunucu-tool ZİNCİRİ
+    # (search_places, get_saved_location vb. çok-adımlı) tespit edilince → yetenekli Flash'a yükselt.
+    # "gemini-flash-latest" artık Gemini 3 Flash'a çözümleniyor (pahalı uç) → onun yerine sabitliyoruz.
+    GEMINI_SIMPLE_MODEL: str = "gemini-2.5-flash-lite"   # ilk geçiş: ucuz/hızlı
+    GEMINI_COMPLEX_MODEL: str = "gemini-2.5-flash"       # escalate: çok-adımlı için yetenekli
+    # Geriye dönük uyum / web_search grounding alt-çağrısı için birincil.
+    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
     # Birincil model geçici 503/429/504 verirse sırayla denenecek yedekler (virgülle).
-    # gemini-3-flash-preview başta: yoğunlukta diğerleri 503 verirken genelde o ayakta kalıyor.
-    GEMINI_FALLBACK_MODELS: str = "gemini-3-flash-preview,gemini-flash-latest,gemini-2.5-flash-lite"
+    GEMINI_FALLBACK_MODELS: str = "gemini-2.5-flash,gemini-flash-latest,gemini-2.5-flash-lite"
     # Thinking: -1 = modelin varsayılanı (Gemini 3'te çok-adımlı/agentic tool kullanımı için
     # gereken thought_signature'ı üretir — yoksa round-trip'te 400). 0 = kapalı (hızlı ama
     # Gemini 3'te server-tool döngüsünü bozar). Pozitif sayı = sabit düşünme bütçesi.
@@ -65,9 +68,10 @@ class Settings(BaseSettings):
     # --- Google Places (Faz 4) ---
     GOOGLE_PLACES_API_KEY: str = ""
 
-    def model_chain(self) -> list[str]:
-        """Denenecek modeller: birincil + yedekler (tekrarsız, sıralı)."""
-        chain = [self.GEMINI_MODEL.strip()]
+    def model_chain(self, primary: str | None = None) -> list[str]:
+        """Denenecek modeller: birincil + yedekler (tekrarsız, sıralı).
+        primary verilirse o kademe (basit/çok-adımlı) öne alınır; yoksa GEMINI_MODEL."""
+        chain = [(primary or self.GEMINI_MODEL).strip()]
         for m in self.GEMINI_FALLBACK_MODELS.split(","):
             m = m.strip()
             if m and m not in chain:

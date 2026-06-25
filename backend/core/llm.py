@@ -113,15 +113,16 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
     """Bir konuşma turu (agentic). Döner: {action, args, reply}."""
     client = _get_client()
     contents = _to_contents(history, user_message)
-    chain = settings.model_chain()
     escalated_budget = settings.GEMINI_THINKING_BUDGET
-    # HIZ: önce düşünme KAPALI (budget=0) → basit komutlar hızlı. Sunucu-tool round-trip'i
-    # gerekirse düşünmeyi aç (Gemini 3 thought_signature için). Model sabitlenir.
+    # KADEMELİ MODEL + HIZ: ilk geçiş UCUZ model (SIMPLE) + düşünme KAPALI (budget=0) → basit
+    # komut/sohbet hızlı+ucuz. Sunucu-tool ZİNCİRİ (çok-adımlı) tespit edilince YETENEKLİ modele
+    # (COMPLEX) yükselt + düşünmeyi aç (Gemini 3 thought_signature için). Model sonra sabitlenir.
     state = {
         "grounding": settings.GEMINI_GROUNDING,
         "model": None,
         "budget": 0,
         "escalated": False,
+        "chain": settings.model_chain(settings.GEMINI_SIMPLE_MODEL),
     }
 
     def _call(model: str):
@@ -145,7 +146,7 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
         delay = 1.0
         last_exc: Exception | None = None
         for _round in range(3):
-            models = [state["model"]] if state["model"] else chain
+            models = [state["model"]] if state["model"] else state["chain"]
             for model in models:
                 try:
                     resp = _call(model)
@@ -196,11 +197,13 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
             reply = reply.strip()
             return {"action": "chat_reply", "args": {"text": reply}, "reply": reply}
 
-        # Diğer sunucu tool'ları → round-trip gerekiyor → thought_signature için düşünme açık olmalı.
-        # İlk kez bu noktaya geldiysek (düşünme kapalıydı) turu düşünme AÇIK yeniden üret.
+        # Diğer sunucu tool'ları → ÇOK-ADIMLI zincir → YETENEKLİ modele yükselt + düşünmeyi aç
+        # (thought_signature için). İlk kez bu noktaya geldiysek turu COMPLEX model + düşünmeyle yeniden üret.
         if not state["escalated"] and escalated_budget != 0:
             state["escalated"] = True
             state["budget"] = escalated_budget
+            state["chain"] = settings.model_chain(settings.GEMINI_COMPLEX_MODEL)  # basit→yetenekli kademe
+            state["model"] = None  # yeni kademeden taze model seç
             continue
 
         # Model turn'ünü (thought_signature dahil) aynen ekle, sonuçları geri besle.
