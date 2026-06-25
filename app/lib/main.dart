@@ -124,19 +124,62 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  /// Servis isolate'ından (arka plan Vosk) ön plandayken gelen komut.
+  /// Servis isolate'ından (arka plan Vosk) ön plandayken gelen sinyal:
+  /// - 'cmd': tek nefes "Şahin X" → X Vosk metni (hızlı).
+  /// - 'capture': sadece "Şahin" → komutu Whisper ile kaydet (isabetli).
   void _onServiceData(Object data) {
     if (_busy || _state == AssistantState.recording) return;
-    if (data is Map && data['cmd'] is String) {
+    if (data is! Map) return;
+    if (data['cmd'] is String) {
       _handleText(data['cmd'] as String);
+    } else if (data['capture'] == true) {
+      _captureCommand();
     }
   }
 
-  /// Arka plandan/kapalıdan açıldıysak servisin kaydettiği bekleyen komutu işle.
+  /// Arka plandan/kapalıdan açıldıysak servisin bıraktığı bekleyen işi yap.
   Future<void> _consumePending() async {
     if (_busy || _state == AssistantState.recording) return;
     final cmd = await ForegroundWakeService.takePendingCommand();
-    if (cmd != null && mounted) await _handleText(cmd);
+    if (cmd != null && mounted) {
+      await _handleText(cmd);
+      return;
+    }
+    if (await ForegroundWakeService.takePendingCapture() && mounted) {
+      await _captureCommand();
+    }
+  }
+
+  /// "Şahin" sonrası komutu butona basmadan kaydeder → Whisper (isabetli) → işler.
+  /// Sessizlikte otomatik durur (VAD).
+  Future<void> _captureCommand() async {
+    if (_busy || _state == AssistantState.recording) return;
+    ForegroundWakeService.pauseMic(); // servis Vosk mic'i bıraksın
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!await _recorder.hasPermission()) {
+      ForegroundWakeService.resumeMic();
+      return;
+    }
+    _set(AssistantState.recording, 'Şahin dinliyor — söyle 🎤');
+    try {
+      final path = await _recorder.recordUntilSilence();
+      if (path == null) {
+        _set(AssistantState.idle, 'Duyamadım, tekrar dene');
+        return;
+      }
+      _set(AssistantState.thinking, 'Yazıya çeviriyorum…');
+      final text = await _backend.stt(path);
+      if (text.trim().isEmpty) {
+        _set(AssistantState.idle, 'Bir şey duyamadım, tekrar dene');
+        return;
+      }
+      await _handleText(text);
+    } catch (e, st) {
+      debugPrint('JARVIS capture hata: $e\n$st');
+      _set(AssistantState.error, 'Hata: ${_short(e)}');
+    } finally {
+      ForegroundWakeService.resumeMic();
+    }
   }
 
   @override

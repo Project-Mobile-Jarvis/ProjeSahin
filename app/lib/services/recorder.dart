@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
@@ -20,6 +22,46 @@ class Recorder {
   Future<String?> stop() => _rec.stop();
 
   Future<bool> isRecording() => _rec.isRecording();
+
+  /// Eller-serbest kayıt: başlatır, SESSİZLİK (VAD) ya da [maxDuration] dolunca otomatik durur.
+  /// "Şahin" sonrası komutu butona basmadan kaydetmek için. Dosya yolunu döner.
+  Future<String?> recordUntilSilence({
+    Duration maxDuration = const Duration(seconds: 8),
+    Duration silenceHold = const Duration(milliseconds: 1300),
+    double silenceDb = -38.0, // bunun altı "sessizlik" (dBFS)
+    Duration graceStart = const Duration(milliseconds: 900),
+  }) async {
+    await start();
+    final completer = Completer<String?>();
+    final t0 = DateTime.now();
+    DateTime? silenceSince;
+    StreamSubscription<Amplitude>? sub;
+    Timer? maxTimer;
+
+    Future<void> done() async {
+      if (completer.isCompleted) return;
+      await sub?.cancel();
+      maxTimer?.cancel();
+      completer.complete(await stop());
+    }
+
+    maxTimer = Timer(maxDuration, done);
+    sub = _rec.onAmplitudeChanged(const Duration(milliseconds: 200)).listen((amp) {
+      // İlk anlar: kullanıcı konuşmaya başlasın diye sessizliği sayma.
+      if (DateTime.now().difference(t0) < graceStart) {
+        silenceSince = null;
+        return;
+      }
+      if (amp.current <= silenceDb) {
+        silenceSince ??= DateTime.now();
+        if (DateTime.now().difference(silenceSince!) >= silenceHold) done();
+      } else {
+        silenceSince = null; // ses var → sessizlik sayacı sıfırla
+      }
+    });
+
+    return completer.future;
+  }
 
   void dispose() => _rec.dispose();
 }

@@ -41,8 +41,15 @@ class WakeTaskHandler extends TaskHandler {
     }
   }
 
-  /// Sadece "Şahin" duyuldu → ekranı aç (kullanıcı dinlendiğini görsün).
-  Future<void> _onWake() async => _bringUp();
+  /// Sadece "Şahin" duyuldu → komutu Whisper ile kaydetmesi için main'i tetikle (isabetli).
+  Future<void> _onWake() async {
+    if (await FlutterForegroundTask.isAppOnForeground) {
+      FlutterForegroundTask.sendDataToMain({'capture': true});
+    } else {
+      await FlutterForegroundTask.saveData(key: 'pending_capture', value: true);
+      await _bringUp();
+    }
+  }
 
   /// Komut hazır → ön plandaysa UI'a ver, değilse kaydet + app'i aç.
   Future<void> _onCommand(String command) async {
@@ -149,6 +156,16 @@ class ForegroundWakeService {
       return cmd;
     }
     return null;
+  }
+
+  /// Arka planda "Şahin" duyulup açıldıysak: komutu Whisper ile kaydetmemiz gerekiyor mu?
+  static Future<bool> takePendingCapture() async {
+    final v = await FlutterForegroundTask.getData<bool>(key: 'pending_capture');
+    if (v == true) {
+      await FlutterForegroundTask.removeData(key: 'pending_capture');
+      return true;
+    }
+    return false;
   }
 
   static Future<void> stop() => FlutterForegroundTask.stopService();

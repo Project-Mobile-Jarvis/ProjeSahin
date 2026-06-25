@@ -45,8 +45,7 @@ class WakeWordService {
   /// "Şahin" demeden doğrudan komut bekle — sesli onay sonrası otomatik dinleme için.
   /// (Sıradaki cümle, başında "Şahin" olmasa da komut olarak gelir.)
   void armForCommand() {
-    _awaiting = true;
-    _onWake?.call();
+    _awaiting = true; // WhatsApp onayı: "Şahin"siz kısa yanıtı (evet/iptal) Vosk yakalasın
     _awaitTimer?.cancel();
     _awaitTimer = Timer(const Duration(seconds: 10), () => _awaiting = false);
   }
@@ -73,12 +72,9 @@ class WakeWordService {
     if (idx < 0) return; // bu cümlede "şahin" yok → yok say
     final after = text.substring(idx).replaceFirst(_wakeStrip, '').trim();
     if (after.isNotEmpty) {
-      _onCommand?.call(after); // tek nefes: "şahin annemi ara"
+      _onCommand?.call(after); // tek nefes: "şahin annemi ara" → Vosk metni (hızlı, daha az isabetli)
     } else {
-      _awaiting = true; // sadece "şahin" → sıradaki cümleyi komut bekle
-      _onWake?.call();
-      _awaitTimer?.cancel();
-      _awaitTimer = Timer(const Duration(seconds: 8), () => _awaiting = false);
+      _onWake?.call(); // sadece "şahin" → main komutu Whisper ile kaydeder (isabetli)
     }
   }
 
