@@ -18,6 +18,8 @@ void wakeServiceCallback() {
 
 class WakeTaskHandler extends TaskHandler {
   WakeWordService? _wake;
+  bool _micBusy = false; // komut için Vosk geçici durduruldu mu
+  DateTime? _pauseAt;
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -68,9 +70,12 @@ class WakeTaskHandler extends TaskHandler {
     if (data is! String) return;
     switch (data) {
       case 'pause':
+        _micBusy = true;
+        _pauseAt = DateTime.now();
         _wake?.stop();
         break;
       case 'resume':
+        _micBusy = false;
         _wake?.start();
         break;
       case 'arm':
@@ -79,8 +84,22 @@ class WakeTaskHandler extends TaskHandler {
     }
   }
 
+  /// Watchdog (her ~15sn): Vosk komut sonrası takılı kalırsa (resume kaybolursa) geri başlat.
   @override
-  void onRepeatEvent(DateTime timestamp) {}
+  void onRepeatEvent(DateTime timestamp) {
+    if (_micBusy) {
+      // 12 sn'den uzun "meşgul" → resume kaybolmuş say, toparla. Değilse komut sürüyor olabilir.
+      if (_pauseAt != null && DateTime.now().difference(_pauseAt!).inSeconds > 12) {
+        _micBusy = false;
+      } else {
+        return;
+      }
+    }
+    final w = _wake;
+    if (w != null && w.ready && !w.running) {
+      w.start(); // dinleme durmuşsa geri aç
+    }
+  }
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
@@ -109,7 +128,7 @@ class ForegroundWakeService {
       ),
       iosNotificationOptions: const IOSNotificationOptions(),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.nothing(),
+        eventAction: ForegroundTaskEventAction.repeat(15000), // watchdog tetiği (Vosk takılırsa toparla)
         autoRunOnBoot: false,
         autoRunOnMyPackageReplaced: true,
         allowWakeLock: true,
