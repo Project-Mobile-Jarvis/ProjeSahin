@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 from db.models import DEFAULT_USER, Conversation
 
 # Gemini'ye gönderilecek son kaç tur (kullanıcı+model) tutulsun.
-HISTORY_LIMIT = 20
+# Token tasarrufu: 20→8 (son ~4 konuşma; sesli asistanda derin geri-referans nadir).
+HISTORY_LIMIT = 8
 
 
 def load_history(

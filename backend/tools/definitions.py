@@ -1,11 +1,9 @@
 """Gemini function calling araç tanımları (SPEC bölüm 4).
 
-Faz 1 kapsamı: set_alarm, make_call, chat_reply.
-Sonraki fazlarda buraya: send_sms, send_whatsapp, search_places, navigate_to,
-open_app, save_location, get_saved_location, save_preference, get_preference eklenecek.
-
-NOT: Bunlar sadece TANIM. Backend fonksiyonu ÇALIŞTIRMAZ — Gemini'nin döndürdüğü
+Açıklamalar KISA tutulur (token tasarrufu) — yönlendirme kuralları sistem promptunda.
+NOT: Bunlar sadece TANIM. Backend cihaz fonksiyonunu ÇALIŞTIRMAZ — Gemini'nin döndürdüğü
 function_call (ad + argüman) JSON olarak Flutter'a iletilir, aksiyonu cihaz uygular.
+SUNUCU tool'larını (search_places, locations, preferences) backend çalıştırır.
 """
 from google.genai import types
 
@@ -24,13 +22,13 @@ def _int(desc: str) -> types.Schema:
 
 SET_ALARM = types.FunctionDeclaration(
     name="set_alarm",
-    description="Telefonda belirtilen saate alarm kurar. Kullanıcı 'saat 8'e alarm kur' gibi dediğinde.",
+    description="Saate alarm kurar ('saat 8'e alarm').",
     parameters=types.Schema(
         type=_OBJ,
         properties={
-            "hour": _int("Saat, 24 saat formatı (0-23)."),
-            "minute": _int("Dakika (0-59). Belirtilmediyse 0."),
-            "label": _str("Alarm etiketi. Belirtilmediyse 'Alarm'."),
+            "hour": _int("Saat (0-23)."),
+            "minute": _int("Dakika (0-59). Yoksa 0."),
+            "label": _str("Etiket. Yoksa 'Alarm'."),
         },
         required=["hour"],
     ),
@@ -38,12 +36,10 @@ SET_ALARM = types.FunctionDeclaration(
 
 MAKE_CALL = types.FunctionDeclaration(
     name="make_call",
-    description="Bir kişiyi telefondan arar. Hedef kişi cihazda rehberden çözülür ('annemi ara', 'Sevdem'i ara').",
+    description="Kişiyi arar; rehberden çözülür ('annemi ara').",
     parameters=types.Schema(
         type=_OBJ,
-        properties={
-            "target": _str("Aranacak kişi, kullanıcının söylediği şekilde. Ör: 'anne', 'Sevdem'."),
-        },
+        properties={"target": _str("Aranacak kişi, ör: 'anne', 'Sevdem'.")},
         required=["target"],
     ),
 )
@@ -51,22 +47,18 @@ MAKE_CALL = types.FunctionDeclaration(
 SEND_WHATSAPP = types.FunctionDeclaration(
     name="send_whatsapp",
     description=(
-        "WhatsApp'tan bir kişiye metin mesajı gönderir. 'anneme WhatsApp at', "
-        "'Sevdem'e geliyorum yaz', 'kardeşime mesaj gönder' gibi. Kişi cihazda rehberden çözülür. "
-        "include_location=true ise mesaja konum (Google Maps linki) eklenir ('konumu da gönder'). "
-        "ÖNEMLİ: reply MUTLAKA sesli onay sorusu olsun — ör: \"Anne'ye 'geliyorum' gönderiyorum, onaylıyor musun?\" "
-        "Asıl gönderme, kullanıcının sesli onayından sonra cihazda yapılır."
+        "WhatsApp mesajı gönderir ('anneme ... yaz'). Kişi rehberden çözülür. "
+        "reply'de MUTLAKA onay sorusu sor; gönderme onaydan sonra cihazda olur."
     ),
     parameters=types.Schema(
         type=_OBJ,
         properties={
-            "target": _str("Mesaj gönderilecek kişi, kullanıcının söylediği şekilde. Ör: 'anne', 'Sevdem'."),
-            "text": _str("Gönderilecek mesaj metni — kısa, Türkçe, kullanıcının kastettiği içerik."),
+            "target": _str("Kişi, ör: 'anne', 'Sevdem'."),
+            "text": _str("Gönderilecek kısa Türkçe mesaj."),
             "include_location": types.Schema(
-                type=types.Type.BOOLEAN,
-                description="Mesaja konum (Maps linki) eklensin mi. Varsayılan false.",
+                type=types.Type.BOOLEAN, description="Mesaja konum (Maps linki) eklensin mi. Varsayılan false."
             ),
-            "location_query": _str("include_location ise hangi yer; boşsa kullanıcının anlık konumu kullanılır."),
+            "location_query": _str("Konum eklenecekse yer; boşsa anlık konum."),
         },
         required=["target", "text"],
     ),
@@ -74,15 +66,10 @@ SEND_WHATSAPP = types.FunctionDeclaration(
 
 CHAT_REPLY = types.FunctionDeclaration(
     name="chat_reply",
-    description=(
-        "Hiçbir cihaz aksiyonu gerektirmeyen durumlarda kullan: selamlaşma, soru-cevap, "
-        "sohbet. Kullanıcıya söylenecek kısa, samimi Türkçe metni döndür."
-    ),
+    description="Cihaz aksiyonu gerekmeyen durumlar (selam, sohbet, soru-cevap): kısa samimi Türkçe cevap.",
     parameters=types.Schema(
         type=_OBJ,
-        properties={
-            "text": _str("Kullanıcıya söylenecek kısa, samimi Türkçe cevap."),
-        },
+        properties={"text": _str("Kullanıcıya kısa Türkçe cevap.")},
         required=["text"],
     ),
 )
@@ -91,16 +78,12 @@ CHAT_REPLY = types.FunctionDeclaration(
 
 SEARCH_PLACES = types.FunctionDeclaration(
     name="search_places",
-    description=(
-        "Gerçek mekan/işletme arar (restoran, benzin istasyonu, kafe, eczane vb.) ve "
-        "isim/puan/adres/konum döner. 'çevremde iyi restoran', 'Bodrum'da kahvaltı', "
-        "'en yakın benzinci' gibi durumlarda kullan. SUNUCU çalıştırır."
-    ),
+    description="Gerçek mekan/işletme arar (restoran, benzinci, kafe...) isim/puan/adres/konum döner. ASLA uydurma. SUNUCU.",
     parameters=types.Schema(
         type=_OBJ,
         properties={
-            "query": _str("Aranan tür/şey: 'restoran', 'benzin istasyonu', 'kahvaltı' vb."),
-            "location": _str("Şehir/semt. Belirtilmezse kullanıcının çevresi kullanılır."),
+            "query": _str("Tür/şey: 'restoran', 'benzin istasyonu'."),
+            "location": _str("Şehir/semt. Yoksa kullanıcının çevresi."),
         },
         required=["query"],
     ),
@@ -108,17 +91,10 @@ SEARCH_PLACES = types.FunctionDeclaration(
 
 WEB_SEARCH = types.FunctionDeclaration(
     name="web_search",
-    description=(
-        "Güncel veya genel bilgi için web'de arama yapar: haberler, tarihler, akademik takvim, "
-        "hava durumu, fiyatlar, 'kim/ne/ne zaman/nerede' soruları, bilmediğin güncel olgular. "
-        "Cihaz aksiyonu olmayan ama doğru/güncel bilgi gerektiren her soruda kullan. "
-        "Kendi bilgini uydurma — emin değilsen bunu çağır. SUNUCU çalıştırır."
-    ),
+    description="Güncel/genel bilgi için web araması (haber, tarih, hava, fiyat, 'kim/ne/ne zaman'). Uydurma; emin değilsen çağır. SUNUCU.",
     parameters=types.Schema(
         type=_OBJ,
-        properties={
-            "query": _str("Web'de aranacak net sorgu, ör: '2025-2026 Muğla Sıtkı Koçman akademik takvim'."),
-        },
+        properties={"query": _str("Net sorgu, ör: '2025-2026 Muğla Sıtkı Koçman akademik takvim'.")},
         required=["query"],
     ),
 )
@@ -126,14 +102,13 @@ WEB_SEARCH = types.FunctionDeclaration(
 NAVIGATE_TO = types.FunctionDeclaration(
     name="navigate_to",
     description=(
-        "Araçla navigasyonu BAŞLATIR; telefonda Google Haritalar yol tarifi modunda açılır. "
-        "'eve götür', 'işe git', restoran adı, 'en yakın benzinciye git' gibi. Koordinat "
-        "biliniyorsa (get_saved_location veya search_places'ten) lat/lng ver; yoksa query yeter."
+        "Araçla navigasyonu başlatır (Google Haritalar). 'eve götür', restoran adı, 'en yakın benzinci'. "
+        "Koordinat biliniyorsa lat/lng ver, yoksa query."
     ),
     parameters=types.Schema(
         type=_OBJ,
         properties={
-            "query": _str("Gidilecek yerin adı/tarifi: 'ev', 'iş', restoran adı, 'en yakın benzinci'."),
+            "query": _str("Gidilecek yer: 'ev', restoran adı, 'en yakın benzinci'."),
             "lat": types.Schema(type=types.Type.NUMBER, description="Hedef enlem (biliniyorsa)."),
             "lng": types.Schema(type=types.Type.NUMBER, description="Hedef boylam (biliniyorsa)."),
         },
@@ -143,23 +118,17 @@ NAVIGATE_TO = types.FunctionDeclaration(
 
 SAVE_LOCATION = types.FunctionDeclaration(
     name="save_location",
-    description=(
-        "Kullanıcının ANLIK konumunu bir etiketle kalıcı kaydeder. 'şu anki konumumu evim "
-        "olarak kaydet', 'burayı iş yap'. Koordinat telefonun GPS'inden gelir. SUNUCU çalıştırır."
-    ),
+    description="Anlık konumu etiketle kaydeder ('burayı ev yap'). Koordinat GPS'ten. SUNUCU.",
     parameters=types.Schema(
         type=_OBJ,
-        properties={"label": _str("Etiket: 'ev', 'iş', 'spor salonu' vb.")},
+        properties={"label": _str("Etiket: 'ev', 'iş' vb.")},
         required=["label"],
     ),
 )
 
 GET_SAVED_LOCATION = types.FunctionDeclaration(
     name="get_saved_location",
-    description=(
-        "Daha önce kaydedilmiş konumu (ev/iş vb.) getirir. 'eve götür' (navigate_to'dan önce) "
-        "veya 'evim nerede' için. SUNUCU çalıştırır."
-    ),
+    description="Kayıtlı konumu getirir (ev/iş). 'eve götür'den önce. SUNUCU.",
     parameters=types.Schema(
         type=_OBJ,
         properties={"label": _str("Etiket: 'ev', 'iş' vb.")},
@@ -169,15 +138,12 @@ GET_SAVED_LOCATION = types.FunctionDeclaration(
 
 SAVE_PREFERENCE = types.FunctionDeclaration(
     name="save_preference",
-    description=(
-        "Kalıcı kişisel tercih kaydeder. 'en sevdiğim mutfak İtalyan', 'sabah 7'de uyan' gibi. "
-        "SUNUCU çalıştırır."
-    ),
+    description="Kişisel tercih kaydeder ('favori mutfak İtalyan'). SUNUCU.",
     parameters=types.Schema(
         type=_OBJ,
         properties={
-            "key": _str("Tercih anahtarı, ör: 'favori_mutfak'."),
-            "value": _str("Tercih değeri, ör: 'İtalyan'."),
+            "key": _str("Anahtar, ör: 'favori_mutfak'."),
+            "value": _str("Değer, ör: 'İtalyan'."),
         },
         required=["key", "value"],
     ),
@@ -185,7 +151,7 @@ SAVE_PREFERENCE = types.FunctionDeclaration(
 
 GET_PREFERENCE = types.FunctionDeclaration(
     name="get_preference",
-    description="Kayıtlı tercihi getirir. SUNUCU çalıştırır.",
+    description="Kayıtlı tercihi getirir. SUNUCU.",
     parameters=types.Schema(
         type=_OBJ,
         properties={"key": _str("Tercih anahtarı.")},
