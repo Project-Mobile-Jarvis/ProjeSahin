@@ -78,6 +78,17 @@ def _config(use_grounding: bool, thinking_budget: int) -> types.GenerateContentC
     )
 
 
+def _tool_error_reply(names: list[str]) -> str:
+    """Sunucu tool'u hata dönünce kullanıcıya kibar Türkçe mesaj (döngüye GİRMEDEN).
+
+    Hatayı Gemini'ye geri beslersek model 5 tura kadar tekrar dener → 7+ saniye + boşa
+    düşünme tokenı. Anahtar yok/geçersizse retry zaten faydasız; hemen kibarca dön.
+    """
+    if "search_places" in names:
+        return "Şu an mekan araması yapamıyorum, birazdan tekrar dener misin?"
+    return "Şu an bunu yapamadım kanka, birazdan tekrar dener misin?"
+
+
 def _default_reply(action: str, args: dict[str, Any]) -> str:
     if action == "set_alarm":
         hour = args.get("hour")
@@ -199,14 +210,22 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
             state["model"] = None  # yeni kademeden taze model seç
             continue
 
+        # Sunucu tool'larını çalıştır. HEPSİ hata dönerse döngüye GİRME (5 tura kadar
+        # tekrar = 7+ saniye + boşa düşünme tokenı); kullanıcıya kibar Türkçe mesajla dön.
+        results = [
+            (fc.name, execute_server_tool(fc.name, dict(fc.args) if fc.args else {}, ctx))
+            for fc in fcalls
+        ]
+        if results and all(isinstance(r, dict) and r.get("error") for _, r in results):
+            reply = _tool_error_reply([n for n, _ in results])
+            logger.warning("Sunucu tool'ları hata döndü (%s) → kibar dönüş", [n for n, _ in results])
+            return {"action": "chat_reply", "args": {"text": reply}, "reply": reply}
+
         # Model turn'ünü (thought_signature dahil) aynen ekle, sonuçları geri besle.
         contents.append(content)
         resp_parts = [
-            types.Part.from_function_response(
-                name=fc.name,
-                response={"result": execute_server_tool(fc.name, dict(fc.args) if fc.args else {}, ctx)},
-            )
-            for fc in fcalls
+            types.Part.from_function_response(name=name, response={"result": r})
+            for name, r in results
         ]
         contents.append(types.Content(role="user", parts=resp_parts))
 
