@@ -177,6 +177,16 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
         model_text = " ".join(p.text for p in parts if getattr(p, "text", None)).strip()
 
         if not fcalls:
+            # İlk-geçiş (Lite) DEGENERE döndüyse (ne fcall ne metin) → boş "Tamam." üretmek
+            # yerine yetenekli modele yükselt + bir kez daha dene. Lite, mekan/araştırma
+            # sorgularında bazen search_places'i çağırmadan boş dönüyor (tiering tradeoff'u);
+            # sadece bu nadir boş durum Flash öder, token tasarrufu korunur.
+            if not model_text and not state["escalated"] and escalated_budget != 0:
+                state["escalated"] = True
+                state["budget"] = escalated_budget
+                state["chain"] = settings.model_chain(settings.GEMINI_COMPLEX_MODEL)
+                state["model"] = None
+                continue
             reply = model_text or "Tamam."
             return {"action": "chat_reply", "args": {"text": reply}, "reply": reply}
 
