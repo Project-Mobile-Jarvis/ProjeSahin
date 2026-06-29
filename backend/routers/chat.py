@@ -69,14 +69,17 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
             detail="Gemini isteği başarısız. Lütfen tekrar dene.",
         ) from exc
 
+    # ephemeral: başarısızlık/fallback cevabı ("Tamam.", "Anlayamadım", tool hatası) →
+    # ChatResponse şemasında yok, çıkar.
+    ephemeral = result.pop("ephemeral", False)
+
     # Konuşmayı kalıcılaştır (bağlam sonraki turlarda korunsun).
     memory.save_turn(db, req.session_id, "user", req.message)
-    # AKSİYON turlarının reply metnini ("anne aranıyor." gibi) model geçmişine YAZMA.
-    # Geçmiş düz metin (role/content) tutuyor; bir make_call/set_alarm turu geçmişe
-    # "user: annemi ara → model: anne aranıyor." olarak düşünce model bir sonraki sefer
-    # fonksiyonu ÇAĞIRMAK yerine o metni TEKRAR ÜRETİYOR (function-call düz metne dönüşüp
-    # "doğru cevap bu" sanılıyor → komut hiç çalışmıyor). Sadece GERÇEK sohbeti sakla.
-    if result["action"] == "chat_reply":
+    # Geçmişe SADECE gerçek sohbet (chat_reply, ephemeral değil) cevabını yaz. AKSİYON turları
+    # (make_call/navigate_to/set_alarm) ve BAŞARISIZLIK fallback'leri geçmişi zehirliyor: model
+    # bir sonraki sefer fonksiyon çağırmak yerine o metni ("anne aranıyor.", "Tamam.") tekrar
+    # üretip komutu çalıştırmıyordu (function-call düz metne dönüşüp "doğru cevap bu" sanılıyor).
+    if result["action"] == "chat_reply" and not ephemeral:
         memory.save_turn(db, req.session_id, "model", result["reply"])
 
     return ChatResponse(**result)

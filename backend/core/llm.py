@@ -169,7 +169,8 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
         response = generate()
         candidates = response.candidates or []
         if not candidates or candidates[0].content is None:
-            return {"action": "chat_reply", "args": {"text": ""}, "reply": "Anlayamadım, tekrar eder misin?"}
+            return {"action": "chat_reply", "args": {"text": ""},
+                    "reply": "Anlayamadım, tekrar eder misin?", "ephemeral": True}
 
         content = candidates[0].content
         parts = content.parts or []
@@ -187,8 +188,11 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
                 state["chain"] = settings.model_chain(settings.GEMINI_COMPLEX_MODEL)
                 state["model"] = None
                 continue
-            reply = model_text or "Tamam."
-            return {"action": "chat_reply", "args": {"text": reply}, "reply": reply}
+            if model_text:
+                return {"action": "chat_reply", "args": {"text": model_text}, "reply": model_text}
+            # Boş/degenere → "Tamam." fallback. ephemeral: geçmişe YAZMA (yoksa sonraki
+            # komutlar bunu görüp fonksiyon çağırmak yerine chat_reply'a kaçar = çürüme).
+            return {"action": "chat_reply", "args": {"text": "Tamam."}, "reply": "Tamam.", "ephemeral": True}
 
         # Cihaz tool'u varsa onu döndür (Flutter uygular).
         device_call = next((fc for fc in fcalls if fc.name not in SERVER_TOOLS), None)
@@ -229,7 +233,7 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
         if results and all(isinstance(r, dict) and r.get("error") for _, r in results):
             reply = _tool_error_reply([n for n, _ in results])
             logger.warning("Sunucu tool'ları hata döndü (%s) → kibar dönüş", [n for n, _ in results])
-            return {"action": "chat_reply", "args": {"text": reply}, "reply": reply}
+            return {"action": "chat_reply", "args": {"text": reply}, "reply": reply, "ephemeral": True}
 
         # Model turn'ünü (thought_signature dahil) aynen ekle, sonuçları geri besle.
         contents.append(content)
@@ -240,4 +244,4 @@ def run_chat(history: list[dict[str, str]], user_message: str, ctx: ToolContext)
         contents.append(types.Content(role="user", parts=resp_parts))
 
     logger.warning("Agentic döngü sınırı (%d) aşıldı", _MAX_TOOL_ITERS)
-    return {"action": "chat_reply", "args": {"text": "Tamam."}, "reply": "Tamam."}
+    return {"action": "chat_reply", "args": {"text": "Tamam."}, "reply": "Tamam.", "ephemeral": True}
