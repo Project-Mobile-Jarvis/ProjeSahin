@@ -47,13 +47,15 @@ class Settings(BaseSettings):
 
     # --- Gemini (Faz 1) ---
     GEMINI_API_KEY: str = ""
-    # KADEMELİ MODEL (token tasarrufu): basit komut/sohbet → ucuz Lite; sunucu-tool ZİNCİRİ
-    # (search_places, get_saved_location vb. çok-adımlı) tespit edilince → yetenekli Flash'a yükselt.
-    # "gemini-flash-latest" artık Gemini 3 Flash'a çözümleniyor (pahalı uç) → onun yerine sabitliyoruz.
-    GEMINI_SIMPLE_MODEL: str = "gemini-2.5-flash-lite"   # ilk geçiş: ucuz/hızlı
-    GEMINI_COMPLEX_MODEL: str = "gemini-2.5-flash"       # escalate: çok-adımlı için yetenekli
-    # Geriye dönük uyum / web_search grounding alt-çağrısı için birincil.
-    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
+    # MODEL: gemini-2.5-flash (tüm geçişler). Lite (gemini-2.5-flash-lite) DENENDİ ve BIRAKILDI:
+    # konuşma geçmişi birikince fonksiyon çağırmayı bırakıp düz metne kaçıyordu ("anne aranıyor",
+    # "annenle konuşmam lazım" → komut hiç çalışmıyordu). Flash, geçmiş varken de güvenilir çağırıyor.
+    # Diğer token tasarrufları (prompt/tool kırpma, history 8, web_search terminal) korunuyor;
+    # tek-kullanıcı + 10TL limit için Flash maliyeti sorun değil.
+    GEMINI_SIMPLE_MODEL: str = "gemini-2.5-flash"   # ilk geçiş
+    GEMINI_COMPLEX_MODEL: str = "gemini-2.5-flash"  # escalate: çok-adımlı + düşünme bütçesi
+    # web_search grounding alt-çağrısı + yedek zincirin birincili.
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     # Birincil model geçici 503/429/504 verirse sırayla denenecek yedekler (virgülle).
     GEMINI_FALLBACK_MODELS: str = "gemini-2.5-flash,gemini-flash-latest,gemini-2.5-flash-lite"
     # Thinking: -1 = modelin varsayılanı (Gemini 3'te çok-adımlı/agentic tool kullanımı için
